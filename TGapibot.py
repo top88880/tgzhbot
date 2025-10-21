@@ -87,6 +87,13 @@ except ImportError:
     print("💡 请安装: pip install opentele")
     OPENTELE_AVAILABLE = False
 
+try:
+    from login_api import LoginApiService, AIOHTTP_AVAILABLE as LOGIN_API_AVAILABLE
+    print("✅ login_api模块导入成功")
+except ImportError:
+    LOGIN_API_AVAILABLE = False
+    print("⚠️ login_api模块导入失败，Web Login API功能不可用")
+
 # ================================
 # 代理管理器
 # ================================
@@ -601,6 +608,11 @@ class Config:
         self.PROXY_RETRY_COUNT = int(os.getenv("PROXY_RETRY_COUNT", "2"))
         self.PROXY_BATCH_SIZE = int(os.getenv("PROXY_BATCH_SIZE", "20"))
         
+        # Web Login API 配置
+        self.API_SERVER_HOST = os.getenv("API_SERVER_HOST", "0.0.0.0")
+        self.API_SERVER_PORT = int(os.getenv("API_SERVER_PORT", "8080"))
+        self.PUBLIC_BASE_URL = os.getenv("PUBLIC_BASE_URL", "")
+        
         # 获取当前脚本目录
         self.SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
         
@@ -616,6 +628,9 @@ class Config:
         print(f"📁 结果目录: {self.RESULTS_DIR}")
         print(f"📡 系统配置: USE_PROXY={'true' if self.USE_PROXY else 'false'}")
         print(f"💡 注意: 实际代理模式需要配置文件+数据库开关+有效代理文件同时满足")
+        print(f"🌐 Web Login API: {self.API_SERVER_HOST}:{self.API_SERVER_PORT}")
+        if self.PUBLIC_BASE_URL:
+            print(f"🔗 公开 URL: {self.PUBLIC_BASE_URL}")
     
     def validate(self):
         if not self.TOKEN or not self.API_ID or not self.API_HASH:
@@ -645,6 +660,9 @@ PROXY_AUTO_CLEANUP=true
 PROXY_FAST_MODE=true
 PROXY_RETRY_COUNT=2
 PROXY_BATCH_SIZE=20
+API_SERVER_HOST=0.0.0.0
+API_SERVER_PORT=8080
+PUBLIC_BASE_URL=
 """
             with open(".env", "w", encoding="utf-8") as f:
                 f.write(env_content)
@@ -3247,6 +3265,23 @@ class EnhancedBot:
         self.converter = FormatConverter(self.db)
         self.two_factor_manager = TwoFactorManager(self.proxy_manager, self.db)
         
+        # 初始化 Web Login API 服务
+        self.login_api_service = None
+        if LOGIN_API_AVAILABLE:
+            try:
+                self.login_api_service = LoginApiService(
+                    host=config.API_SERVER_HOST,
+                    port=config.API_SERVER_PORT,
+                    public_base_url=config.PUBLIC_BASE_URL
+                )
+                self.login_api_service.start_background()
+                print("✅ Web Login API 服务已启动")
+            except Exception as e:
+                print(f"⚠️ Web Login API 服务启动失败: {e}")
+                self.login_api_service = None
+        else:
+            print("⚠️ Web Login API 服务不可用（aiohttp未安装）")
+        
         self.updater = Updater(config.TOKEN, use_context=True)
         self.dp = self.updater.dispatcher
         
@@ -3264,6 +3299,7 @@ class EnhancedBot:
         self.dp.add_handler(CommandHandler("testproxy", self.test_proxy_command))
         self.dp.add_handler(CommandHandler("cleanproxy", self.clean_proxy_command))
         self.dp.add_handler(CommandHandler("convert", self.convert_command))
+        self.dp.add_handler(CommandHandler("api", self.api_command))
         self.dp.add_handler(CallbackQueryHandler(self.handle_callbacks))
         self.dp.add_handler(MessageHandler(Filters.document, self.handle_file))
         self.dp.add_handler(MessageHandler(Filters.text & ~Filters.command, self.handle_text))
@@ -4012,6 +4048,84 @@ class EnhancedBot:
         
         keyboard = InlineKeyboardMarkup(buttons)
         self.safe_send_message(update, text, 'HTML', keyboard)
+    
+    def api_command(self, update: Update, context: CallbackContext):
+        """API命令 - 扫描sessions文件夹并发布登录链接"""
+        user_id = update.effective_user.id
+        
+        # 检查权限
+        is_member, level, _ = self.db.check_membership(user_id)
+        if not is_member and not self.db.is_admin(user_id):
+            self.safe_send_message(update, "❌ 需要会员权限才能使用API功能")
+            return
+        
+        # 检查 Web Login API 服务是否可用
+        if not self.login_api_service:
+            self.safe_send_message(
+                update,
+                "❌ Web Login API 服务不可用\n\n"
+                "原因: aiohttp库未安装或服务启动失败\n"
+                "💡 请安装: pip install aiohttp",
+                'HTML'
+            )
+            return
+        
+        # 扫描 sessions 目录
+        sessions_dir = os.path.join(os.getcwd(), "sessions")
+        if not os.path.exists(sessions_dir):
+            self.safe_send_message(
+                update,
+                "❌ sessions 目录不存在\n\n"
+                "请先将 .session 文件放入 sessions 目录",
+                'HTML'
+            )
+            return
+        
+        # 查找所有 .session 文件
+        session_files = []
+        for filename in os.listdir(sessions_dir):
+            if filename.endswith('.session') and not filename.endswith('.session-journal'):
+                session_path = os.path.join(sessions_dir, filename)
+                session_files.append((session_path, filename))
+        
+        if not session_files:
+            self.safe_send_message(
+                update,
+                "❌ sessions 目录中没有找到 .session 文件",
+                'HTML'
+            )
+            return
+        
+        # 注册所有 sessions 并生成链接
+        links_text = "🌐 <b>Web Login API 链接</b>\n\n"
+        links_text += f"📊 找到 {len(session_files)} 个 session 文件\n\n"
+        
+        for session_path, filename in session_files:
+            # 从文件名提取手机号
+            phone = filename.replace('.session', '')
+            
+            # 注册到 Web Login API
+            try:
+                url = self.login_api_service.register_session(
+                    session_path=session_path,
+                    phone=phone,
+                    api_id=config.API_ID,
+                    api_hash=config.API_HASH
+                )
+                
+                links_text += f"📱 <code>{phone}</code>\n"
+                links_text += f"🔗 {url}\n\n"
+                
+            except Exception as e:
+                print(f"❌ 注册 session 失败 {phone}: {e}")
+                links_text += f"❌ <code>{phone}</code> - 注册失败\n\n"
+        
+        links_text += "💡 <b>使用说明:</b>\n"
+        links_text += "• 点击链接访问登录页面\n"
+        links_text += "• 页面会实时显示收到的验证码\n"
+        links_text += "• 支持 API 接口查询验证码\n"
+        
+        self.safe_send_message(update, links_text, 'HTML')
     
     def handle_proxy_callbacks(self, query, data):
         """处理代理相关回调"""
@@ -5215,6 +5329,60 @@ class EnhancedBot:
             # 最终消息
             success_rate = (success_count / total_files * 100) if total_files > 0 else 0
             
+            # 如果是 tdata_to_session 转换且有成功的，自动注册到 Web Login API
+            api_links_text = ""
+            if conversion_type == "tdata_to_session" and success_count > 0 and self.login_api_service:
+                api_links_text = "\n\n🌐 <b>Web Login API 链接</b>\n"
+                
+                # 查找转换成功的 session 文件并注册
+                sessions_dir = os.path.join(os.getcwd(), "sessions")
+                registered_count = 0
+                
+                for file_path, file_name, info in results.get("转换成功", []):
+                    try:
+                        # 查找对应的 session 文件
+                        # file_name 是 tdata 目录名，需要找到对应的 session
+                        # session 文件在 results 中的 file_path 指向
+                        session_files = []
+                        if os.path.isdir(file_path):
+                            # 如果是目录，查找其中的 session 文件
+                            for item in os.listdir(file_path):
+                                if item.endswith('.session'):
+                                    session_files.append(os.path.join(file_path, item))
+                        else:
+                            # 如果直接是文件
+                            if file_path.endswith('.session'):
+                                session_files.append(file_path)
+                        
+                        # 也检查 sessions 目录
+                        if os.path.exists(sessions_dir):
+                            for item in os.listdir(sessions_dir):
+                                if item.endswith('.session') and file_name in item:
+                                    session_path = os.path.join(sessions_dir, item)
+                                    if session_path not in session_files:
+                                        session_files.append(session_path)
+                        
+                        # 注册找到的 session 文件
+                        for session_path in session_files:
+                            if os.path.exists(session_path):
+                                phone = os.path.basename(session_path).replace('.session', '')
+                                url = self.login_api_service.register_session(
+                                    session_path=session_path,
+                                    phone=phone,
+                                    api_id=config.API_ID,
+                                    api_hash=config.API_HASH
+                                )
+                                api_links_text += f"📱 {phone}\n🔗 {url}\n\n"
+                                registered_count += 1
+                                
+                    except Exception as e:
+                        print(f"⚠️ 注册 session 到 API 失败 {file_name}: {e}")
+                
+                if registered_count > 0:
+                    api_links_text += f"✅ 已注册 {registered_count} 个账号到 Web Login API\n"
+                else:
+                    api_links_text = ""
+            
             final_text = f"""
 ✅ <b>转换任务完成！</b>
 
@@ -5226,7 +5394,7 @@ class EnhancedBot:
 • 🚀 平均速度: {total_files/elapsed_time:.2f}个/秒
 
 
-📥 {'所有结果文件已发送！'}
+📥 {'所有结果文件已发送！'}{api_links_text}
             """
             
             self.safe_send_message(update, final_text, 'HTML')

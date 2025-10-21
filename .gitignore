@@ -1,0 +1,45 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+
+# Virtual environments
+venv/
+env/
+ENV/
+.venv
+
+# Bot-specific
+.env
+*.session
+*.session-journal
+bot_data.db
+
+# Uploads and results
+uploads/
+results/
+
+# Proxy files
+proxy.txt
+proxy_backup.txt
+proxy_working.txt
+proxy_failed.txt
+
+# Temp files
+temp_download_*
+temp_conversion_*
+temp_2fa_*
+*.tmp
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
