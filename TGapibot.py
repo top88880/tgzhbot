@@ -3450,6 +3450,9 @@ class EnhancedBot:
             ],
             [
                 InlineKeyboardButton("🔐 修改2FA", callback_data="change_2fa"),
+                InlineKeyboardButton("🌐 api转换", callback_data="api_convert")
+            ],
+            [
                 InlineKeyboardButton("🛡️ 防止找回", callback_data="prevent_recovery")
             ]
         ]
@@ -4444,6 +4447,8 @@ class EnhancedBot:
             self.handle_format_conversion(query)
         elif data == "change_2fa":
             self.handle_change_2fa(query)
+        elif data == "api_convert":
+            self.handle_api_convert(query)
         elif data == "convert_tdata_to_session":
             self.handle_convert_tdata_to_session(query)
         elif data == "convert_session_to_tdata":
@@ -4742,6 +4747,63 @@ class EnhancedBot:
         self.db.save_user(user_id, query.from_user.username or "", 
                          query.from_user.first_name or "", "waiting_2fa_file")
     
+    def handle_api_convert(self, query):
+        """处理API转换"""
+        query.answer()
+        user_id = query.from_user.id
+        
+        # 检查权限
+        is_member, level, _ = self.db.check_membership(user_id)
+        if not is_member and not self.db.is_admin(user_id):
+            self.safe_edit_message(query, "❌ 需要会员权限才能使用API转换功能")
+            return
+        
+        # 检查 LoginApiService 是否可用
+        if not self.login_api_service:
+            self.safe_edit_message(query, "❌ Web Login API服务不可用\n\n原因: aiohttp库未安装或服务未启动\n💡 请安装: pip install aiohttp")
+            return
+        
+        text = """
+🌐 <b>批量转换API功能</b>
+
+<b>✨ 核心功能</b>
+• 📱 <b>自动转换</b>
+  - TData格式：自动转换为Session并生成API链接
+  - Session格式：直接使用已有Session生成API链接
+  - 智能识别：系统自动检测文件类型
+
+• 🔗 <b>生成网页接码链接</b>
+  - 每个账号生成唯一的网页链接
+  - 用于后续登录时获取验证码
+  - 链接永久有效，随时可查看
+
+• 📊 <b>实时进度显示</b>
+  - 显示转换和处理进度
+  - 自动生成结果文件
+  - 包含手机号和对应链接
+
+<b>📤 操作说明</b>
+请上传 tdata 或 session+json 的 ZIP 文件，系统将转换为 API 并生成网页接码链接；处理中会显示实时进度。
+
+<b>📁 支持格式</b>
+• TData 文件夹（包含 D877F783D5D3EF8C 目录）
+• Session 文件（.session 格式）
+• ZIP 压缩包
+
+🚀 请上传您的ZIP文件...
+        """
+        
+        buttons = [
+            [InlineKeyboardButton("🔙 返回主菜单", callback_data="back_to_main")]
+        ]
+        
+        keyboard = InlineKeyboardMarkup(buttons)
+        self.safe_edit_message(query, text, 'HTML', keyboard)
+        
+        # 设置用户状态
+        self.db.save_user(user_id, query.from_user.username or "", 
+                         query.from_user.first_name or "", "waiting_api_convert_file")
+    
     def handle_help_callback(self, query):
         query.answer()
         help_text = """
@@ -4867,8 +4929,8 @@ class EnhancedBot:
             row = c.fetchone()
             conn.close()
             
-            if not row or row[0] not in ["waiting_file", "waiting_convert_tdata", "waiting_convert_session", "waiting_2fa_file"]:
-                self.safe_send_message(update, "❌ 请先点击 🚀开始检测、🔄格式转换 或 🔐修改2FA 按钮")
+            if not row or row[0] not in ["waiting_file", "waiting_convert_tdata", "waiting_convert_session", "waiting_2fa_file", "waiting_api_convert_file"]:
+                self.safe_send_message(update, "❌ 请先点击 🚀开始检测、🔄格式转换、🔐修改2FA 或 🌐api转换 按钮")
                 return
             
             user_status = row[0]
@@ -4906,6 +4968,13 @@ class EnhancedBot:
                 asyncio.run(self.process_2fa_change(update, context, document))
             
             thread = threading.Thread(target=process_2fa)
+            thread.start()
+        elif user_status == "waiting_api_convert_file":
+            # 异步处理API转换
+            def process_api():
+                asyncio.run(self.process_api_conversion(update, context, document))
+            
+            thread = threading.Thread(target=process_api)
             thread.start()
         
         self.db.save_user(user_id, update.effective_user.username or "", 
@@ -5756,6 +5825,246 @@ class EnhancedBot:
             if user_id in self.two_factor_manager.pending_2fa_tasks:
                 del self.two_factor_manager.pending_2fa_tasks[user_id]
                 print(f"🗑️ 清理任务信息: user_id={user_id}")
+    
+    async def process_api_conversion(self, update, context, document):
+        """处理API转换 - 将TData或Session转换为API链接"""
+        user_id = update.effective_user.id
+        start_time = time.time()
+        task_id = f"{user_id}_{int(start_time)}"
+        
+        print(f"🌐 开始API转换任务: {task_id}")
+        
+        # 发送进度消息
+        progress_msg = self.safe_send_message(
+            update,
+            "📥 <b>正在处理您的文件...</b>",
+            'HTML'
+        )
+        
+        if not progress_msg:
+            print("❌ 无法发送进度消息")
+            return
+        
+        temp_zip = None
+        extract_dir = None
+        try:
+            # 下载文件
+            temp_dir = tempfile.mkdtemp(prefix="temp_api_")
+            temp_zip = os.path.join(temp_dir, document.file_name)
+            
+            document.get_file().download(temp_zip)
+            print(f"📥 下载文件: {temp_zip}")
+            
+            # 扫描文件
+            files, extract_dir, file_type = self.processor.scan_zip_file(temp_zip, user_id, task_id)
+            
+            if not files:
+                try:
+                    progress_msg.edit_text(
+                        "❌ <b>未找到有效文件</b>\n\n请确保ZIP包含TData或Session格式的账号文件",
+                        parse_mode='HTML'
+                    )
+                except:
+                    pass
+                return
+            
+            total_files = len(files)
+            
+            try:
+                progress_msg.edit_text(
+                    f"🔄 <b>转换 API 进行中...</b>\n\n📁 找到 {total_files} 个文件\n📊 文件类型: {file_type.upper()}\n⏳ 正在初始化...",
+                    parse_mode='HTML'
+                )
+            except:
+                pass
+            
+            # 存储成功转换的session信息
+            success_sessions = []
+            
+            # 如果是TData格式，需要先转换为Session
+            if file_type == "tdata":
+                print(f"📦 检测到TData格式，开始转换为Session...")
+                
+                # 定义进度回调
+                async def conversion_callback(processed, total, results, speed, elapsed):
+                    try:
+                        success_count = len(results.get("转换成功", []))
+                        error_count = len(results.get("转换错误", []))
+                        
+                        progress_text = f"""
+🔄 <b>转换 API 进行中...</b>
+
+📊 <b>当前进度</b>
+• 已处理: {processed}/{total}
+• 速度: {speed:.1f} 个/秒
+• 用时: {int(elapsed)} 秒
+
+✅ <b>转换成功</b>: {success_count}
+❌ <b>转换错误</b>: {error_count}
+
+⏱️ 预计剩余: {int((total - processed) / speed) if speed > 0 else 0} 秒
+                        """
+                        
+                        try:
+                            progress_msg.edit_text(progress_text, parse_mode='HTML')
+                        except:
+                            pass
+                    except Exception as e:
+                        print(f"⚠️ 更新进度失败: {e}")
+                
+                # 执行批量转换
+                conversion_results = await self.converter.batch_convert_with_progress(
+                    files, 
+                    "tdata_to_session",
+                    config.API_ID,
+                    config.API_HASH,
+                    conversion_callback
+                )
+                
+                # 从转换成功的结果中提取session文件
+                sessions_dir = os.path.join(os.getcwd(), "sessions")
+                for file_path, file_name, info in conversion_results.get("转换成功", []):
+                    # 查找转换后的session文件
+                    session_file = os.path.join(sessions_dir, f"{file_name}.session")
+                    if os.path.exists(session_file):
+                        success_sessions.append((session_file, file_name))
+                        print(f"✅ 转换成功: {file_name}")
+                
+                print(f"📊 转换完成: 成功 {len(success_sessions)} 个")
+                
+            elif file_type == "session":
+                print(f"📱 检测到Session格式，直接使用...")
+                # 直接使用session文件
+                for file_path, file_name in files:
+                    if file_path.endswith('.session'):
+                        # 提取手机号（从文件名）
+                        phone = os.path.basename(file_path).replace('.session', '')
+                        success_sessions.append((file_path, phone))
+                        print(f"✅ 找到Session: {phone}")
+            
+            # 为每个session注册到LoginAPI并生成链接
+            print(f"🔗 开始注册 {len(success_sessions)} 个账号到 Web Login API...")
+            
+            api_links = []
+            registered_count = 0
+            
+            for session_path, phone in success_sessions:
+                try:
+                    if os.path.exists(session_path):
+                        url = self.login_api_service.register_session(
+                            session_path=session_path,
+                            phone=phone,
+                            api_id=config.API_ID,
+                            api_hash=config.API_HASH
+                        )
+                        api_links.append((phone, url))
+                        registered_count += 1
+                        print(f"🔗 注册成功: {phone} -> {url}")
+                except Exception as e:
+                    print(f"⚠️ 注册失败 {phone}: {e}")
+            
+            # 生成TXT文件
+            if api_links:
+                result_filename = f"批量转换API_获取成功_{registered_count}.txt"
+                result_path = os.path.join(config.RESULTS_DIR, result_filename)
+                
+                try:
+                    with open(result_path, 'w', encoding='utf-8') as f:
+                        for phone, url in api_links:
+                            f.write(f"{phone} {url}\n")
+                    
+                    print(f"📄 生成结果文件: {result_filename}")
+                except Exception as e:
+                    print(f"❌ 生成文件失败: {e}")
+                    result_path = None
+            else:
+                result_path = None
+            
+            elapsed_time = time.time() - start_time
+            
+            # 发送结果统计
+            summary_text = f"""
+批量转换API｜统计数据
+
+🟢 获取成功: {registered_count}
+
+⏱️ 处理时间: {int(elapsed_time)} 秒
+📊 文件类型: {file_type.upper()}
+
+{'📦 正在发送结果文件...' if result_path else '❌ 没有成功转换的账号'}
+            """
+            
+            try:
+                progress_msg.edit_text(summary_text, parse_mode=None)
+            except:
+                pass
+            
+            # 发送TXT文件
+            if result_path and os.path.exists(result_path):
+                try:
+                    with open(result_path, 'rb') as f:
+                        caption = f"📋 批量转换API结果\n\n🟢 获取成功: {registered_count}个账号\n⏰ 处理时间: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
+                        context.bot.send_document(
+                            chat_id=update.effective_chat.id,
+                            document=f,
+                            filename=result_filename,
+                            caption=caption
+                        )
+                    print(f"📤 发送结果文件: {result_filename}")
+                    
+                    # 清理结果文件
+                    try:
+                        os.remove(result_path)
+                    except:
+                        pass
+                        
+                except Exception as e:
+                    print(f"❌ 发送文件失败: {e}")
+            
+            # 最终消息
+            final_text = f"""
+✅ <b>API转换完成！</b>
+
+📊 <b>转换统计</b>
+• 总计: {total_files}个
+• 🟢 获取成功: {registered_count}个
+• ⏱️ 总用时: {int(elapsed_time)}秒
+
+{'📥 结果文件已发送！' if registered_count > 0 else ''}
+
+如需再次使用，请点击 /start
+            """
+            
+            self.safe_send_message(update, final_text, 'HTML')
+            
+        except Exception as e:
+            print(f"❌ API转换失败: {e}")
+            import traceback
+            traceback.print_exc()
+            
+            try:
+                progress_msg.edit_text(
+                    f"❌ <b>API转换失败</b>\n\n错误: {str(e)}",
+                    parse_mode='HTML'
+                )
+            except:
+                pass
+        
+        finally:
+            # 清理临时文件
+            if extract_dir and os.path.exists(extract_dir):
+                try:
+                    shutil.rmtree(extract_dir, ignore_errors=True)
+                    print(f"🗑️ 清理解压目录: {extract_dir}")
+                except:
+                    pass
+            
+            if temp_zip and os.path.exists(temp_zip):
+                try:
+                    shutil.rmtree(os.path.dirname(temp_zip), ignore_errors=True)
+                    print(f"🗑️ 清理临时文件: {temp_zip}")
+                except:
+                    pass
     
     def handle_text(self, update: Update, context: CallbackContext):
         user_id = update.effective_user.id
