@@ -86,14 +86,14 @@ except ImportError:
     print("⚠️ opentele未安装，格式转换功能不可用")
     print("💡 请安装: pip install opentele")
     OPENTELE_AVAILABLE = False
-
+# Flask相关导入（新增或确认存在）
 try:
-    from login_api import LoginApiService, AIOHTTP_AVAILABLE as LOGIN_API_AVAILABLE
-    print("✅ login_api模块导入成功")
+    from flask import Flask, jsonify, request, render_template_string
+    FLASK_AVAILABLE = True
+    print("✅ Flask库导入成功")
 except ImportError:
-    LOGIN_API_AVAILABLE = False
-    print("⚠️ login_api模块导入失败，Web Login API功能不可用")
-
+    FLASK_AVAILABLE = False
+    print("❌ Flask未安装（验证码网页功能不可用）")
 # ================================
 # 代理管理器
 # ================================
@@ -599,7 +599,11 @@ class Config:
             "RESIDENTIAL_PROXY_PATTERNS", 
             "abcproxy,residential,resi,mobile"
         ).split(",")
-        
+                # 新增：对外访问的基础地址，用于生成验证码网页链接
+        # 例如: http://45.147.196.113:5000 或 https://your.domain
+        self.BASE_URL = os.getenv("BASE_URL", "http://127.0.0.1:5000")
+        ...
+        print(f"🌐 验证码网页 BASE_URL: {self.BASE_URL}")
         # 新增速度优化配置
         self.PROXY_CHECK_CONCURRENT = int(os.getenv("PROXY_CHECK_CONCURRENT", "50"))
         self.PROXY_CHECK_TIMEOUT = int(os.getenv("PROXY_CHECK_TIMEOUT", "3"))
@@ -607,11 +611,6 @@ class Config:
         self.PROXY_FAST_MODE = os.getenv("PROXY_FAST_MODE", "true").lower() == "true"
         self.PROXY_RETRY_COUNT = int(os.getenv("PROXY_RETRY_COUNT", "2"))
         self.PROXY_BATCH_SIZE = int(os.getenv("PROXY_BATCH_SIZE", "20"))
-        
-        # Web Login API 配置
-        self.API_SERVER_HOST = os.getenv("API_SERVER_HOST", "0.0.0.0")
-        self.API_SERVER_PORT = int(os.getenv("API_SERVER_PORT", "8080"))
-        self.PUBLIC_BASE_URL = os.getenv("PUBLIC_BASE_URL", "")
         
         # 获取当前脚本目录
         self.SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -628,9 +627,6 @@ class Config:
         print(f"📁 结果目录: {self.RESULTS_DIR}")
         print(f"📡 系统配置: USE_PROXY={'true' if self.USE_PROXY else 'false'}")
         print(f"💡 注意: 实际代理模式需要配置文件+数据库开关+有效代理文件同时满足")
-        print(f"🌐 Web Login API: {self.API_SERVER_HOST}:{self.API_SERVER_PORT}")
-        if self.PUBLIC_BASE_URL:
-            print(f"🔗 公开 URL: {self.PUBLIC_BASE_URL}")
     
     def validate(self):
         if not self.TOKEN or not self.API_ID or not self.API_HASH:
@@ -660,9 +656,7 @@ PROXY_AUTO_CLEANUP=true
 PROXY_FAST_MODE=true
 PROXY_RETRY_COUNT=2
 PROXY_BATCH_SIZE=20
-API_SERVER_HOST=0.0.0.0
-API_SERVER_PORT=8080
-PUBLIC_BASE_URL=
+BASE_URL=http://127.0.0.1:5000
 """
             with open(".env", "w", encoding="utf-8") as f:
                 f.write(env_content)
@@ -3242,6 +3236,709 @@ class TwoFactorManager:
             print(f"⏰ 清理过期任务: user_id={user_id}")
 
 # ================================
+# API格式转换器（新增）
+# ================================
+
+class APIFormatConverter:
+    def __init__(self, *args, **kwargs):
+        """
+        兼容构造：支持无参/位置参/关键字参三种调用方式
+        用法示例：
+          APIFormatConverter()
+          APIFormatConverter(db)
+          APIFormatConverter(db, base_url)
+          APIFormatConverter(db=db, base_url=base_url)
+        """
+        import os
+        # 解析参数
+        db = kwargs.pop('db', None)
+        base_url = kwargs.pop('base_url', None)
+        if len(args) >= 1 and db is None:
+            db = args[0]
+        if len(args) >= 2 and base_url is None:
+            base_url = args[1]
+
+        # 注入到实例
+        self.db = db
+        self.base_url = (base_url or os.getenv("BASE_URL") or "http://127.0.0.1:5000").rstrip('/')
+
+        # 其它初始化
+        self.flask_app = None
+        self.verification_codes = {}
+        self.active_sessions = {}
+
+        # 数据库表初始化（没有也不会影响运行）
+        try:
+            self.init_api_database()
+        except Exception as e:
+            print(f"⚠️ 初始化API数据库时出错: {e}")
+
+        print(f"🔗 API格式转换器已初始化，BASE_URL={self.base_url}, db={'OK' if self.db else 'None'}")
+class APIFormatConverter:
+    # —— 如果你已有 __init__，保留你的；确保 __init__ 里会调用 self.init_api_database() —— #
+
+    # 1) 确保有表
+    def init_api_database(self):
+        import sqlite3
+        conn = sqlite3.connect(self.db.db_name)
+        c = conn.cursor()
+        c.execute("""
+        CREATE TABLE IF NOT EXISTS api_accounts (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            phone TEXT UNIQUE,
+            api_key TEXT UNIQUE,
+            two_fa_password TEXT,
+            created_at TEXT
+        )""")
+        c.execute("""
+        CREATE TABLE IF NOT EXISTS verification_codes (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            phone TEXT,
+            code TEXT,
+            code_type TEXT,
+            received_at TEXT
+        )""")
+        conn.commit()
+        conn.close()
+
+    # 2) 工具：生成 api_key、写入/更新账号、查询账号、保存/获取验证码
+    def generate_api_key(self) -> str:
+        import uuid, hashlib, time
+        raw = f"{uuid.uuid4()}-{time.time()}"
+        return hashlib.md5(raw.encode()).hexdigest()
+
+    def upsert_api_account(self, phone: str, two_fa_password: str = "") -> dict:
+        import sqlite3
+        conn = sqlite3.connect(self.db.db_name)
+        c = conn.cursor()
+        c.execute("SELECT phone, api_key, two_fa_password FROM api_accounts WHERE phone=?", (phone,))
+        row = c.fetchone()
+        if row:
+            api_key = row[1]
+            if two_fa_password and (row[2] or "") != two_fa_password:
+                c.execute("UPDATE api_accounts SET two_fa_password=? WHERE phone=?", (two_fa_password, phone))
+                conn.commit()
+        else:
+            api_key = self.generate_api_key()
+            c.execute(
+                "INSERT INTO api_accounts(phone, api_key, two_fa_password, created_at) VALUES(?,?,?,datetime('now'))",
+                (phone, api_key, two_fa_password or "")
+            )
+            conn.commit()
+        conn.close()
+        return {"phone": phone, "api_key": api_key, "two_fa_password": two_fa_password or ""}
+
+    def get_account_by_api_key(self, api_key: str):
+        import sqlite3
+        conn = sqlite3.connect(self.db.db_name)
+        c = conn.cursor()
+        c.execute("SELECT phone, api_key, two_fa_password FROM api_accounts WHERE api_key=?", (api_key,))
+        row = c.fetchone()
+        conn.close()
+        if not row:
+            return None
+        return {"phone": row[0], "api_key": row[1], "two_fa_password": row[2] or ""}
+
+    def save_verification_code(self, phone: str, code: str, code_type: str = "sms"):
+        import sqlite3
+        conn = sqlite3.connect(self.db.db_name)
+        c = conn.cursor()
+        c.execute(
+            "INSERT INTO verification_codes(phone, code, code_type, received_at) VALUES(?,?,?,datetime('now'))",
+            (phone, code, code_type)
+        )
+        conn.commit()
+        conn.close()
+
+    def get_latest_verification_code(self, phone: str):
+        import sqlite3
+        conn = sqlite3.connect(self.db.db_name)
+        c = conn.cursor()
+        c.execute(
+            "SELECT code, code_type, received_at FROM verification_codes WHERE phone=? ORDER BY id DESC LIMIT 1",
+            (phone,)
+        )
+        row = c.fetchone()
+        conn.close()
+        if not row:
+            return None
+        return {"code": row[0], "code_type": row[1], "received_at": row[2]}
+
+    # 3) 阶段2核心：按你的调用签名实现（异步、三参：files, file_type, override_two_fa）
+    async def convert_to_api_format(self, files, file_type: str, override_two_fa: str = None):
+        """
+        输入：
+          - files: list[str]，从阶段1解析出来的文件/目录路径
+          - file_type: 'session'/'tg_session'/'txt'/'csv' 等
+          - override_two_fa: 若提供则覆盖写入 two_fa_password
+        输出：
+          - list[dict] -> [{'phone','api_key','verify_url'} ...]
+        """
+        import os, re, glob
+
+        def pick_phone(text: str):
+            m = re.search(r'(\+?\d{6,20})', text or "")
+            return m.group(1) if m else None
+
+        # 归一化成手机号列表
+        phones = []
+
+        # 容错：files 可能含目录或不同类型文件
+        for p in (files or []):
+            if not p:
+                continue
+            if os.path.isdir(p):
+                # 扫描目录下的 *.session
+                for sp in glob.glob(os.path.join(p, "*.session")):
+                    ph = pick_phone(os.path.basename(sp))
+                    if ph:
+                        phones.append(ph)
+            else:
+                low = p.lower()
+                if low.endswith(".session"):
+                    ph = pick_phone(os.path.basename(p))
+                    if ph:
+                        phones.append(ph)
+                elif low.endswith(".txt"):
+                    try:
+                        with open(p, "r", encoding="utf-8", errors="ignore") as f:
+                            for line in f:
+                                ph = pick_phone(line.strip())
+                                if ph:
+                                    phones.append(ph)
+                    except Exception:
+                        pass
+                elif low.endswith(".csv"):
+                    try:
+                        with open(p, "r", encoding="utf-8", errors="ignore") as f:
+                            for line in f:
+                                ph = pick_phone(line.strip())
+                                if ph:
+                                    phones.append(ph)
+                    except Exception:
+                        pass
+                else:
+                    # 其它类型：从文件名里尽量提取
+                    ph = pick_phone(os.path.basename(p))
+                    if ph:
+                        phones.append(ph)
+
+        # 去重，保持顺序
+        seen = set()
+        normalized = []
+        for ph in phones:
+            if ph not in seen:
+                seen.add(ph)
+                normalized.append(ph)
+
+        # 写库并生成链接
+        results = []
+        for ph in normalized:
+            acc = self.upsert_api_account(ph, override_two_fa or "")
+            verify_url = f"{self.base_url}/verify/{acc['api_key']}"
+            results.append({"phone": acc["phone"], "api_key": acc["api_key"], "verify_url": verify_url})
+
+        return results
+
+    # 4) 生成阶段2要发给用户的TXT
+    def create_api_result_files(self, api_accounts, task_id: str):
+        """
+        输入：api_accounts = [{'phone','api_key','verify_url'}, ...]
+        输出：list[str] 文件路径（目前只生成一个TXT）
+        """
+        import os
+        out_dir = os.path.join(os.getcwd(), "api_results")
+        os.makedirs(out_dir, exist_ok=True)
+        out_txt = os.path.join(out_dir, f"api_links_{task_id}.txt")
+        with open(out_txt, "w", encoding="utf-8") as f:
+            for it in (api_accounts or []):
+                f.write(f"{it['phone']}\t{it['verify_url']}\n")
+        return [out_txt]    
+    def init_api_database(self):
+        """初始化API相关数据库表"""
+        try:
+            conn = sqlite3.connect(self.db.db_name)
+            c = conn.cursor()
+            
+            # API账号表
+            c.execute("""
+                CREATE TABLE IF NOT EXISTS api_accounts (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    phone TEXT UNIQUE,
+                    api_key TEXT UNIQUE,
+                    verification_url TEXT,
+                    two_fa_password TEXT,
+                    session_data TEXT,
+                    tdata_path TEXT,
+                    status TEXT DEFAULT 'active',
+                    created_at TEXT,
+                    last_used TEXT
+                )
+            """)
+            
+            # 验证码表
+            c.execute("""
+                CREATE TABLE IF NOT EXISTS verification_codes (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    phone TEXT,
+                    code TEXT,
+                    code_type TEXT,
+                    received_at TEXT,
+                    used INTEGER DEFAULT 0,
+                    expires_at TEXT
+                )
+            """)
+            
+            conn.commit()
+            conn.close()
+            print("✅ API数据库表初始化完成")
+            
+        except Exception as e:
+            print(f"❌ API数据库初始化失败: {e}")
+    
+    def generate_api_key(self, phone: str) -> str:
+        """生成唯一的API密钥"""
+        import uuid
+        import hashlib
+        data = f"{phone}_{datetime.now().isoformat()}_{uuid.uuid4()}"
+        return hashlib.sha256(data.encode()).hexdigest()[:32]
+    
+    def generate_verification_url(self, api_key: str) -> str:
+        """生成验证码接收页面URL，使用配置的 BASE_URL（不要用 localhost）"""
+        base = self.base_url.rstrip('/')
+        return f"{base}/verify/{api_key}"
+    
+    async def extract_account_info_from_session(self, session_path: str) -> dict:
+        """从Session文件提取账号信息"""
+        if not TELETHON_AVAILABLE:
+            return {"error": "Telethon未安装"}
+        
+        try:
+            client = TelegramClient(session_path, config.API_ID, config.API_HASH)
+            await client.connect()
+            
+            if not await client.is_user_authorized():
+                await client.disconnect()
+                return {"error": "Session未授权"}
+            
+            me = await client.get_me()
+            await client.disconnect()
+            
+            return {
+                "phone": me.phone,
+                "user_id": me.id,
+                "username": me.username,
+                "first_name": me.first_name,
+                "last_name": me.last_name,
+                "is_premium": getattr(me, 'premium', False)
+            }
+            
+        except Exception as e:
+            return {"error": f"提取失败: {str(e)}"}
+    
+    async def extract_account_info_from_tdata(self, tdata_path: str) -> dict:
+        """从TData提取账号信息"""
+        if not OPENTELE_AVAILABLE:
+            return {"error": "opentele库未安装"}
+        
+        try:
+            tdesk = TDesktop(tdata_path)
+            if not tdesk.isLoaded():
+                return {"error": "TData未授权或无效"}
+            
+            # 临时转换为Session获取信息
+            temp_session = f"temp_api_{int(time.time())}"
+            client = await tdesk.ToTelethon(session=temp_session, flag=UseCurrentSession)
+            
+            await client.connect()
+            me = await client.get_me()
+            await client.disconnect()
+            
+            # 清理临时session
+            temp_files = [f"{temp_session}.session", f"{temp_session}.session-journal"]
+            for temp_file in temp_files:
+                if os.path.exists(temp_file):
+                    os.remove(temp_file)
+            
+            return {
+                "phone": me.phone,
+                "user_id": me.id,
+                "username": me.username,
+                "first_name": me.first_name,
+                "last_name": me.last_name,
+                "is_premium": getattr(me, 'premium', False)
+            }
+            
+        except Exception as e:
+            return {"error": f"提取失败: {str(e)}"}
+    
+    async def convert_to_api_format(self, files: List[Tuple[str, str]], file_type: str, override_two_fa: Optional[str] = None) -> List[dict]:
+        """批量转换为API格式；若提供 override_two_fa，则使用其作为统一2FA"""
+        api_accounts = []
+        password_detector = PasswordDetector()
+
+        for file_path, file_name in files:
+            try:
+                print(f"🔄 处理文件: {file_name}")
+                if file_type == "session":
+                    account_info = await self.extract_account_info_from_session(file_path)
+                else:
+                    account_info = await self.extract_account_info_from_tdata(file_path)
+                if "error" in account_info:
+                    print(f"❌ 提取失败: {file_name} - {account_info['error']}")
+                    continue
+
+                phone = account_info.get("phone", "unknown")
+                if not phone or phone == "unknown":
+                    print(f"⚠️ 无法获取手机号: {file_name}")
+                    continue
+
+                # 2FA 处理：手动输入优先，否则自动识别
+                if override_two_fa:
+                    two_fa_password = override_two_fa
+                else:
+                    two_fa_password = password_detector.detect_password(file_path, file_type) or ""
+
+                api_key = self.generate_api_key(phone)
+                verification_url = self.generate_verification_url(api_key)
+
+                self.save_api_account(
+                    phone=phone,
+                    api_key=api_key,
+                    verification_url=verification_url,
+                    two_fa_password=two_fa_password,
+                    session_data=file_path if file_type == "session" else "",
+                    tdata_path=file_path if file_type == "tdata" else "",
+                    account_info=account_info
+                )
+
+                api_format = {
+                    "phone": phone,
+                    "api_key": api_key,
+                    "verification_url": verification_url,
+                    "two_fa_password": two_fa_password,
+                    "account_info": account_info,
+                    "created_at": datetime.now().isoformat(),
+                    "format_version": "1.0"
+                }
+                api_accounts.append(api_format)
+                print(f"✅ 转换成功: {phone}")
+            except Exception as e:
+                print(f"❌ 处理失败: {file_name} - {str(e)}")
+                continue
+        return api_accounts
+    
+    def save_api_account(self, phone: str, api_key: str, verification_url: str, 
+                        two_fa_password: str, session_data: str, tdata_path: str, 
+                        account_info: dict):
+        """保存API账号到数据库"""
+        try:
+            conn = sqlite3.connect(self.db.db_name)
+            c = conn.cursor()
+            
+            c.execute("""
+                INSERT OR REPLACE INTO api_accounts 
+                (phone, api_key, verification_url, two_fa_password, session_data, 
+                 tdata_path, status, created_at, last_used)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (
+                phone, api_key, verification_url, two_fa_password, 
+                session_data, tdata_path, 'active', 
+                datetime.now().isoformat(), datetime.now().isoformat()
+            ))
+            
+            conn.commit()
+            conn.close()
+            
+        except Exception as e:
+            print(f"❌ 保存API账号失败: {e}")
+    
+
+
+
+    def start_web_server(self):
+        if not FLASK_AVAILABLE:
+            print("❌ Flask未安装，无法启动验证码服务器")
+            return
+        if getattr(self, "flask_app", None):
+            return
+
+        self.flask_app = Flask(__name__)
+
+        @self.flask_app.route('/verify/<api_key>')
+        def verification_page(api_key):
+            try:
+                print(f"[VERIFY] start api_key={api_key}", flush=True)
+                account = self.get_account_by_api_key(api_key)
+                print(f"[VERIFY] account={'FOUND' if account else 'NONE'}", flush=True)
+                if not account:
+                    return "❌ 无效的API密钥", 404
+                html = self.render_verification_template(
+                    account['phone'], api_key, account.get('two_fa_password') or ""
+                )
+                print(f"[VERIFY] rendered ok", flush=True)
+                return html
+            except Exception as e:
+                import traceback
+                traceback.print_exc()
+                return f"Server error in /verify: {e}", 500
+
+        # 纯文本版（不用模板）——用来快速判断问题是否来自模板
+        @self.flask_app.route('/verify-plain/<api_key>')
+        def verify_plain(api_key):
+            try:
+                account = self.get_account_by_api_key(api_key)
+                if not account:
+                    return "NO SUCH KEY", 404
+                return f"OK phone={account['phone']} key={api_key}", 200
+            except Exception as e:
+                return f"Server error in /verify-plain: {e}", 500
+
+        @self.flask_app.route('/api/get_code/<api_key>')
+        def get_verification_code(api_key):
+            try:
+                account = self.get_account_by_api_key(api_key)
+                if not account:
+                    return jsonify({"error": "无效的API密钥"}), 404
+                phone = account['phone']
+                latest_code = self.get_latest_verification_code(phone)
+                if latest_code:
+                    return jsonify({
+                        "success": True,
+                        "code": latest_code['code'],
+                        "received_at": latest_code['received_at'],
+                        "type": latest_code['code_type']
+                    })
+                else:
+                    return jsonify({"success": False, "message": "暂无验证码"})
+            except Exception as e:
+                import traceback; traceback.print_exc()
+                return jsonify({"error": str(e)}), 500
+
+        @self.flask_app.route('/api/submit_code', methods=['POST'])
+        def submit_verification_code():
+            try:
+                data = request.json or {}
+                phone = data.get('phone')
+                code = data.get('code')
+                code_type = data.get('type', 'sms')
+                if not phone or not code:
+                    return jsonify({"error": "缺少必要参数"}), 400
+                self.save_verification_code(phone, code, code_type)
+                return jsonify({"success": True, "message": "验证码已保存"})
+            except Exception as e:
+                import traceback; traceback.print_exc()
+                return jsonify({"error": str(e)}), 500
+
+        @self.flask_app.route('/healthz')
+        def healthz():
+            return jsonify({"ok": True, "base_url": self.base_url}), 200
+
+        @self.flask_app.route('/debug/keys')
+        def debug_keys():
+            try:
+                import sqlite3
+                conn = sqlite3.connect(self.db.db_name)
+                c = conn.cursor()
+                c.execute("SELECT phone, api_key FROM api_accounts ORDER BY id DESC LIMIT 20")
+                rows = c.fetchall()
+                conn.close()
+                return jsonify({
+                    "count": len(rows),
+                    "items": [{"phone": r[0], "api_key": r[1]} for r in rows]
+                })
+            except Exception as e:
+                return jsonify({"error": str(e)}), 500
+
+        def run_server():
+            try:
+                import os, traceback
+                host = os.getenv("API_SERVER_HOST", "0.0.0.0")
+                port = int(os.getenv("API_SERVER_PORT", "8080"))
+                print(f"🌐 验证码接收服务器启动: http://{host}:{port}  (BASE_URL={self.base_url})")
+                self.flask_app.run(host=host, port=port, debug=False)
+            except Exception as e:
+                traceback.print_exc()
+                print(f"❌ Flask服务器启动失败: {e}")
+
+        server_thread = threading.Thread(target=run_server, daemon=True)
+        server_thread.start()
+
+
+
+    def render_verification_template(self, phone: str, api_key: str, two_fa_password: str = "") -> str:
+        template = r'''<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>验证码接收 - {{ phone }}</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+           background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); margin:0; padding:20px; min-height:100vh;
+           display:flex; align-items:center; justify-content:center; }
+    .container { background:white; border-radius:20px; padding:40px; box-shadow:0 20px 40px rgba(0,0,0,0.1);
+                 text-align:center; max-width:420px; width:100%; }
+    .logo { font-size:48px; margin-bottom:20px; }
+    .title { color:#333; font-size:24px; font-weight:600; margin-bottom:10px; }
+    .subtitle { color:#666; font-size:14px; margin-bottom:16px; }
+    .phone-display { background:#f8f9fa; border:2px solid #e9ecef; border-radius:12px; padding:16px;
+                     font-size:18px; font-weight:600; color:#495057; margin-bottom:12px; letter-spacing:1px; }
+    .code-display { background:#e3f2fd; border:2px solid #2196f3; border-radius:12px; padding:20px;
+                    font-size:32px; font-weight:700; color:#1976d2; margin-bottom:10px; letter-spacing:3px; font-family:'Courier New', monospace; }
+    .status { padding:10px 16px; border-radius:8px; font-weight:500; margin:10px 0; }
+    .status.waiting { background:#fff3cd; color:#856404; border:1px solid #ffeaa7; }
+    .status.received { background:#d4edda; color:#155724; border:1px solid #c3e6cb; }
+    .refresh-btn { background:#007bff; color:white; border:none; padding:10px 20px; border-radius:8px;
+                   font-size:16px; cursor:pointer; }
+    .refresh-btn:hover { background:#0056b3; }
+    .time { color:#6c757d; font-size:12px; margin-top:8px; }
+    .footer { margin-top:20px; padding-top:10px; border-top:1px solid #e9ecef; color:#6c757d; font-size:12px; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="logo">📱</div>
+    <div class="title">Telegram 验证码接收</div>
+    <div class="subtitle">请取验证码（页面自动刷新）</div>
+    <div class="phone-display">{{ phone }}</div>
+    {% if two_fa %}
+    <div class="subtitle" style="margin-top:10px;">2FA: <code>{{ two_fa }}</code></div>
+    {% endif %}
+    <div id="status" class="status waiting">等待验证码...</div>
+    <div id="code-display" class="code-display" style="display:none;"></div>
+    <div id="time" class="time" style="display:none;"></div>
+    <button class="refresh-btn" onclick="checkCode()">刷新验证码</button>
+    <div class="footer">This page is created by TeleBot API</div>
+  </div>
+<script>
+  function checkCode() {
+    fetch('/api/get_code/{{ api_key }}')
+      .then(r => r.json())
+      .then(data => {
+        if (data.success) {
+          document.getElementById('status').className = 'status received';
+          document.getElementById('status').textContent = '✅ 验证码已接收';
+          document.getElementById('code-display').textContent = data.code;
+          document.getElementById('code-display').style.display = 'block';
+          document.getElementById('time').textContent = '接收时间: ' + new Date(data.received_at).toLocaleString();
+          document.getElementById('time').style.display = 'block';
+        } else {
+          document.getElementById('status').className = 'status waiting';
+          document.getElementById('status').textContent = '⏳ 等待验证码...';
+          document.getElementById('code-display').style.display = 'none';
+          document.getElementById('time').style.display = 'none';
+        }
+      })
+      .catch(() => {});
+  }
+  checkCode();
+  const timer = setInterval(checkCode, 3000);
+  setTimeout(() => { clearInterval(timer); }, 300000);
+</script>
+</body>
+</html>'''
+        return render_template_string(
+            template,
+            phone=phone,
+            api_key=api_key,
+            two_fa=two_fa_password
+        )
+    
+    def get_account_by_api_key(self, api_key: str) -> dict:
+        """根据API密钥获取账号信息"""
+        try:
+            conn = sqlite3.connect(self.db.db_name)
+            c = conn.cursor()
+            c.execute("SELECT * FROM api_accounts WHERE api_key = ?", (api_key,))
+            row = c.fetchone()
+            conn.close()
+            
+            if row:
+                return {
+                    'phone': row[1],
+                    'api_key': row[2],
+                    'verification_url': row[3],
+                    'two_fa_password': row[4],
+                    'status': row[7]
+                }
+            return None
+        except:
+            return None
+    
+    def save_verification_code(self, phone: str, code: str, code_type: str):
+        """保存验证码"""
+        try:
+            conn = sqlite3.connect(self.db.db_name)
+            c = conn.cursor()
+            
+            expires_at = (datetime.now() + timedelta(minutes=10)).isoformat()
+            
+            c.execute("""
+                INSERT INTO verification_codes 
+                (phone, code, code_type, received_at, expires_at)
+                VALUES (?, ?, ?, ?, ?)
+            """, (phone, code, code_type, datetime.now().isoformat(), expires_at))
+            
+            conn.commit()
+            conn.close()
+            
+            print(f"📱 收到验证码: {phone} - {code}")
+            
+        except Exception as e:
+            print(f"❌ 保存验证码失败: {e}")
+    
+    def get_latest_verification_code(self, phone: str) -> dict:
+        """获取最新验证码"""
+        try:
+            conn = sqlite3.connect(self.db.db_name)
+            c = conn.cursor()
+            c.execute("""
+                SELECT code, code_type, received_at 
+                FROM verification_codes 
+                WHERE phone = ? AND expires_at > ? 
+                ORDER BY received_at DESC 
+                LIMIT 1
+            """, (phone, datetime.now().isoformat()))
+            
+            row = c.fetchone()
+            conn.close()
+            
+            if row:
+                return {
+                    'code': row[0],
+                    'code_type': row[1],
+                    'received_at': row[2]
+                }
+            return None
+        except:
+            return None
+    
+
+    def create_api_result_files(self, api_accounts: List[dict], task_id: str) -> List[str]:
+        """仅生成一个TXT列表（手机号 + 验证码网页链接），不再打包ZIP"""
+        result_files = []
+        if not api_accounts:
+            return result_files
+        try:
+            # 直接在 results 目录生成一个TXT
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            txt_filename = f"api_links_{len(api_accounts)}个_{timestamp}.txt"
+            txt_path = os.path.join(config.RESULTS_DIR, txt_filename)
+
+            with open(txt_path, 'w', encoding='utf-8') as f:
+                f.write("手机号\t验证码网页链接\n")
+                f.write("=" * 50 + "\n")
+                for account in api_accounts:
+                    phone = account.get('phone', '')
+                    url = account.get('verification_url', '')
+                    f.write(f"{phone}\t{url}\n")
+
+            print(f"✅ 生成API链接TXT: {txt_path}")
+            return [txt_path]  # 返回TXT文件路径列表（只有一个）
+        except Exception as e:
+            print(f"❌ 创建API链接TXT失败: {e}")
+            return []
+# ================================
 # 增强版机器人
 # ================================
 
@@ -3264,24 +3961,35 @@ class EnhancedBot:
         self.processor = FileProcessor(self.checker, self.db)
         self.converter = FormatConverter(self.db)
         self.two_factor_manager = TwoFactorManager(self.proxy_manager, self.db)
-        
-        # 初始化 Web Login API 服务
-        self.login_api_service = None
-        if LOGIN_API_AVAILABLE:
-            try:
-                self.login_api_service = LoginApiService(
-                    host=config.API_SERVER_HOST,
-                    port=config.API_SERVER_PORT,
-                    public_base_url=config.PUBLIC_BASE_URL
-                )
-                self.login_api_service.start_background()
-                print("✅ Web Login API 服务已启动")
-            except Exception as e:
-                print(f"⚠️ Web Login API 服务启动失败: {e}")
-                self.login_api_service = None
-        else:
-            print("⚠️ Web Login API 服务不可用（aiohttp未安装）")
-        
+        import inspect
+        print("DEBUG APIFormatConverter source:", inspect.getsourcefile(APIFormatConverter))
+        print("DEBUG APIFormatConverter signature:", str(inspect.signature(APIFormatConverter)))
+        # 初始化 API 格式转换器（带兜底，兼容无参老版本）
+        try:
+            # 首选：带参构造（新版本）
+            self.api_converter = APIFormatConverter(self.db, base_url=config.BASE_URL)
+        except TypeError as e:
+            print(f"⚠️ APIFormatConverter 带参构造失败：{e}，切换到兼容模式（无参+手动注入）")
+            self.api_converter = APIFormatConverter()   # 老版本：无参
+            self.api_converter.db = self.db
+            self.api_converter.base_url = config.BASE_URL
+
+        # 启动验证码网页（保持原有的 try 块即可）
+        try:
+            self.api_converter.start_web_server()
+        except Exception as e:
+            import traceback; traceback.print_exc()
+            print(f"⚠️ 验证码服务器启动失败: {e}")
+
+        # API转换待处理任务池：上传ZIP后先问网页展示的2FA，等待用户回复
+        self.pending_api_tasks: Dict[int, Dict[str, Any]] = {}
+
+        # 启动验证码接收服务器（Flask）
+        try:
+            self.api_converter.start_web_server()
+        except Exception as e:
+            print(f"⚠️ 验证码服务器启动失败: {e}")
+
         self.updater = Updater(config.TOKEN, use_context=True)
         self.dp = self.updater.dispatcher
         
@@ -3299,6 +4007,7 @@ class EnhancedBot:
         self.dp.add_handler(CommandHandler("testproxy", self.test_proxy_command))
         self.dp.add_handler(CommandHandler("cleanproxy", self.clean_proxy_command))
         self.dp.add_handler(CommandHandler("convert", self.convert_command))
+                # 新增：API格式转换命令
         self.dp.add_handler(CommandHandler("api", self.api_command))
         self.dp.add_handler(CallbackQueryHandler(self.handle_callbacks))
         self.dp.add_handler(MessageHandler(Filters.document, self.handle_file))
@@ -3442,7 +4151,8 @@ class EnhancedBot:
 • 当前时间: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
         """
         
-        # 创建横排2x2布局的主菜单按钮
+
+        # 创建横排2x2布局的主菜单按钮（在原有两行后新增一行“🔗 API转换”）
         buttons = [
             [
                 InlineKeyboardButton("🚀 账号检测", callback_data="start_check"),
@@ -3450,25 +4160,26 @@ class EnhancedBot:
             ],
             [
                 InlineKeyboardButton("🔐 修改2FA", callback_data="change_2fa"),
-                InlineKeyboardButton("🌐 api转换", callback_data="api_convert")
+                InlineKeyboardButton("🛡️ 防止找回", callback_data="prevent_recovery")
             ],
             [
-                InlineKeyboardButton("🛡️ 防止找回", callback_data="prevent_recovery")
+                InlineKeyboardButton("🔗 API转换", callback_data="api_conversion"),
+                InlineKeyboardButton("ℹ️ 帮助", callback_data="help")
             ]
         ]
-        
+
         # 管理员按钮
         if self.db.is_admin(user_id):
             buttons.append([
                 InlineKeyboardButton("👑 管理员面板", callback_data="admin_panel"),
                 InlineKeyboardButton("📡 代理管理", callback_data="proxy_panel")
             ])
-        
-        # 底部功能按钮
+
+        # 底部功能按钮（如果已把“帮助”放到第三行左侧，可将这里的帮助去掉或改为“⚙️ 状态”）
         buttons.append([
-            InlineKeyboardButton("ℹ️ 帮助", callback_data="help"),
             InlineKeyboardButton("⚙️ 状态", callback_data="status")
         ])
+
         
         keyboard = InlineKeyboardMarkup(buttons)
         
@@ -3486,6 +4197,108 @@ class EnhancedBot:
         else:
             self.safe_send_message(update, welcome_text, 'HTML', keyboard)
     
+    def api_command(self, update: Update, context: CallbackContext):
+        """API格式转换命令"""
+        user_id = update.effective_user.id
+
+        # 权限检查
+        is_member, level, _ = self.db.check_membership(user_id)
+        if not is_member and not self.db.is_admin(user_id):
+            self.safe_send_message(update, "❌ 需要会员权限才能使用API转换功能")
+            return
+
+        if not 'FLASK_AVAILABLE' in globals() or not FLASK_AVAILABLE:
+            self.safe_send_message(update, "❌ API转换功能不可用\n\n原因: Flask库未安装\n💡 请安装: pip install flask jinja2")
+            return
+
+        text = """
+🔗 <b>API格式转换功能</b>
+
+<b>📱 功能说明</b>
+• 将TData/Session转换为API格式
+• 生成专属验证码接收链接
+• 自动提取手机号和2FA密码
+• 实时转发短信验证码
+
+<b>📋 输出格式</b>
+• JSON格式（开发者友好）
+• CSV格式（Excel可打开）
+• TXT格式（便于查看）
+
+<b>🌐 验证码接收</b>
+• 每个账号生成独立网页链接
+• 类似PVBOT的接收界面
+• 自动刷新显示最新验证码
+• 5分钟自动过期保护
+
+<b>📤 操作说明</b>
+请上传包含TData或Session文件的ZIP压缩包...
+        """
+
+        buttons = [
+            [InlineKeyboardButton("🔙 返回主菜单", callback_data="back_to_main")]
+        ]
+
+        keyboard = InlineKeyboardMarkup(buttons)
+        self.safe_send_message(update, text, 'HTML', keyboard)
+
+        # 设置用户状态
+        self.db.save_user(
+            user_id,
+            update.effective_user.username or "",
+            update.effective_user.first_name or "",
+            "waiting_api_file"
+        ) 
+
+    def handle_api_conversion(self, query):
+        """处理API转换选项"""
+        query.answer()
+        user_id = query.from_user.id
+
+        # 权限检查
+        is_member, level, _ = self.db.check_membership(user_id)
+        if not is_member and not self.db.is_admin(user_id):
+            self.safe_edit_message(query, "❌ 需要会员权限才能使用API转换功能")
+            return
+
+        if not 'FLASK_AVAILABLE' in globals() or not FLASK_AVAILABLE:
+            self.safe_edit_message(query, "❌ API转换功能不可用\n\n原因: Flask库未安装\n💡 请安装: pip install flask jinja2")
+            return
+
+        text = """
+🔗 <b>API格式转换</b>
+
+<b>🎯 核心功能</b>
+• 📱 提取手机号信息
+• 🔐 自动检测2FA密码
+• 🌐 生成验证码接收链接
+• 📋 输出标准API格式
+
+<b>🌐 验证码接收特性</b>
+• 每个账号生成独立验证链接
+• 类似PVBOT的美观界面设计
+• 实时显示验证码，自动刷新
+• 支持HTTP API调用获取验证码
+• 5分钟自动过期保护
+
+<b>📤 使用方法</b>
+1. 上传ZIP文件（包含TData或Session）
+2. 系统自动分析账号信息
+3. 生成API格式文件和验证链接
+4. 下载结果使用
+
+请上传您的文件...
+        """
+
+        self.safe_edit_message(query, text, 'HTML')
+
+        # 设置用户状态
+        self.db.save_user(
+            user_id,
+            query.from_user.username or "",
+            query.from_user.first_name or "",
+            "waiting_api_file"
+        )        
     def help_command(self, update: Update, context: CallbackContext):
         """处理 /help 命令和帮助按钮"""
         help_text = """
@@ -4052,84 +4865,6 @@ class EnhancedBot:
         keyboard = InlineKeyboardMarkup(buttons)
         self.safe_send_message(update, text, 'HTML', keyboard)
     
-    def api_command(self, update: Update, context: CallbackContext):
-        """API命令 - 扫描sessions文件夹并发布登录链接"""
-        user_id = update.effective_user.id
-        
-        # 检查权限
-        is_member, level, _ = self.db.check_membership(user_id)
-        if not is_member and not self.db.is_admin(user_id):
-            self.safe_send_message(update, "❌ 需要会员权限才能使用API功能")
-            return
-        
-        # 检查 Web Login API 服务是否可用
-        if not self.login_api_service:
-            self.safe_send_message(
-                update,
-                "❌ Web Login API 服务不可用\n\n"
-                "原因: aiohttp库未安装或服务启动失败\n"
-                "💡 请安装: pip install aiohttp",
-                'HTML'
-            )
-            return
-        
-        # 扫描 sessions 目录
-        sessions_dir = os.path.join(os.getcwd(), "sessions")
-        if not os.path.exists(sessions_dir):
-            self.safe_send_message(
-                update,
-                "❌ sessions 目录不存在\n\n"
-                "请先将 .session 文件放入 sessions 目录",
-                'HTML'
-            )
-            return
-        
-        # 查找所有 .session 文件
-        session_files = []
-        for filename in os.listdir(sessions_dir):
-            if filename.endswith('.session') and not filename.endswith('.session-journal'):
-                session_path = os.path.join(sessions_dir, filename)
-                session_files.append((session_path, filename))
-        
-        if not session_files:
-            self.safe_send_message(
-                update,
-                "❌ sessions 目录中没有找到 .session 文件",
-                'HTML'
-            )
-            return
-        
-        # 注册所有 sessions 并生成链接
-        links_text = "🌐 <b>Web Login API 链接</b>\n\n"
-        links_text += f"📊 找到 {len(session_files)} 个 session 文件\n\n"
-        
-        for session_path, filename in session_files:
-            # 从文件名提取手机号
-            phone = filename.replace('.session', '')
-            
-            # 注册到 Web Login API
-            try:
-                url = self.login_api_service.register_session(
-                    session_path=session_path,
-                    phone=phone,
-                    api_id=config.API_ID,
-                    api_hash=config.API_HASH
-                )
-                
-                links_text += f"📱 <code>{phone}</code>\n"
-                links_text += f"🔗 {url}\n\n"
-                
-            except Exception as e:
-                print(f"❌ 注册 session 失败 {phone}: {e}")
-                links_text += f"❌ <code>{phone}</code> - 注册失败\n\n"
-        
-        links_text += "💡 <b>使用说明:</b>\n"
-        links_text += "• 点击链接访问登录页面\n"
-        links_text += "• 页面会实时显示收到的验证码\n"
-        links_text += "• 支持 API 接口查询验证码\n"
-        
-        self.safe_send_message(update, links_text, 'HTML')
-    
     def handle_proxy_callbacks(self, query, data):
         """处理代理相关回调"""
         user_id = query.from_user.id
@@ -4447,12 +5182,12 @@ class EnhancedBot:
             self.handle_format_conversion(query)
         elif data == "change_2fa":
             self.handle_change_2fa(query)
-        elif data == "api_convert":
-            self.handle_api_convert(query)
         elif data == "convert_tdata_to_session":
             self.handle_convert_tdata_to_session(query)
         elif data == "convert_session_to_tdata":
             self.handle_convert_session_to_tdata(query)
+        elif data == "api_conversion":
+            self.handle_api_conversion(query)            
         elif query.data == "back_to_main":
             self.show_main_menu(update, user_id)
             # 返回主菜单 - 横排2x2布局
@@ -4747,63 +5482,6 @@ class EnhancedBot:
         self.db.save_user(user_id, query.from_user.username or "", 
                          query.from_user.first_name or "", "waiting_2fa_file")
     
-    def handle_api_convert(self, query):
-        """处理API转换"""
-        query.answer()
-        user_id = query.from_user.id
-        
-        # 检查权限
-        is_member, level, _ = self.db.check_membership(user_id)
-        if not is_member and not self.db.is_admin(user_id):
-            self.safe_edit_message(query, "❌ 需要会员权限才能使用API转换功能")
-            return
-        
-        # 检查 LoginApiService 是否可用
-        if not self.login_api_service:
-            self.safe_edit_message(query, "❌ Web Login API服务不可用\n\n原因: aiohttp库未安装或服务未启动\n💡 请安装: pip install aiohttp")
-            return
-        
-        text = """
-🌐 <b>批量转换API功能</b>
-
-<b>✨ 核心功能</b>
-• 📱 <b>自动转换</b>
-  - TData格式：自动转换为Session并生成API链接
-  - Session格式：直接使用已有Session生成API链接
-  - 智能识别：系统自动检测文件类型
-
-• 🔗 <b>生成网页接码链接</b>
-  - 每个账号生成唯一的网页链接
-  - 用于后续登录时获取验证码
-  - 链接永久有效，随时可查看
-
-• 📊 <b>实时进度显示</b>
-  - 显示转换和处理进度
-  - 自动生成结果文件
-  - 包含手机号和对应链接
-
-<b>📤 操作说明</b>
-请上传 tdata 或 session+json 的 ZIP 文件，系统将转换为 API 并生成网页接码链接；处理中会显示实时进度。
-
-<b>📁 支持格式</b>
-• TData 文件夹（包含 D877F783D5D3EF8C 目录）
-• Session 文件（.session 格式）
-• ZIP 压缩包
-
-🚀 请上传您的ZIP文件...
-        """
-        
-        buttons = [
-            [InlineKeyboardButton("🔙 返回主菜单", callback_data="back_to_main")]
-        ]
-        
-        keyboard = InlineKeyboardMarkup(buttons)
-        self.safe_edit_message(query, text, 'HTML', keyboard)
-        
-        # 设置用户状态
-        self.db.save_user(user_id, query.from_user.username or "", 
-                         query.from_user.first_name or "", "waiting_api_convert_file")
-    
     def handle_help_callback(self, query):
         query.answer()
         help_text = """
@@ -4917,69 +5595,249 @@ class EnhancedBot:
         """处理文件上传"""
         user_id = update.effective_user.id
         document = update.message.document
-        
+
         if not document or not document.file_name.lower().endswith('.zip'):
             self.safe_send_message(update, "❌ 请上传ZIP格式的压缩包")
             return
-        
+
         try:
             conn = sqlite3.connect(config.DB_NAME)
             c = conn.cursor()
             c.execute("SELECT status FROM users WHERE user_id = ?", (user_id,))
             row = c.fetchone()
             conn.close()
-            
-            if not row or row[0] not in ["waiting_file", "waiting_convert_tdata", "waiting_convert_session", "waiting_2fa_file", "waiting_api_convert_file"]:
-                self.safe_send_message(update, "❌ 请先点击 🚀开始检测、🔄格式转换、🔐修改2FA 或 🌐api转换 按钮")
+
+            # 放行的状态，新增 waiting_api_file
+            if not row or row[0] not in [
+                "waiting_file",
+                "waiting_convert_tdata",
+                "waiting_convert_session",
+                "waiting_2fa_file",
+                "waiting_api_file",
+            ]:
+                self.safe_send_message(update, "❌ 请先点击 🚀开始检测、🔄格式转换、🔐修改2FA 或 🔗API转换 按钮")
                 return
-            
+
             user_status = row[0]
-        except:
+        except Exception:
             self.safe_send_message(update, "❌ 系统错误，请重试")
             return
-        
+
         is_member, _, _ = self.db.check_membership(user_id)
         if not is_member and not self.db.is_admin(user_id):
             self.safe_send_message(update, "❌ 需要会员权限")
             return
-        
+
         if document.file_size > 100 * 1024 * 1024:
-            self.safe_send_message(update, f"❌ 文件过大 (限制100MB)")
+            self.safe_send_message(update, "❌ 文件过大 (限制100MB)")
             return
-        
+
         # 根据用户状态选择处理方式
         if user_status == "waiting_file":
             # 异步处理账号检测
             def process_file():
                 asyncio.run(self.process_enhanced_check(update, context, document))
-            
             thread = threading.Thread(target=process_file)
             thread.start()
+
         elif user_status in ["waiting_convert_tdata", "waiting_convert_session"]:
             # 异步处理格式转换
             def process_conversion():
                 asyncio.run(self.process_format_conversion(update, context, document, user_status))
-            
             thread = threading.Thread(target=process_conversion)
             thread.start()
+
         elif user_status == "waiting_2fa_file":
             # 异步处理2FA密码修改
             def process_2fa():
                 asyncio.run(self.process_2fa_change(update, context, document))
-            
             thread = threading.Thread(target=process_2fa)
             thread.start()
-        elif user_status == "waiting_api_convert_file":
-            # 异步处理API转换
-            def process_api():
-                asyncio.run(self.process_api_conversion(update, context, document))
-            
-            thread = threading.Thread(target=process_api)
-            thread.start()
-        
-        self.db.save_user(user_id, update.effective_user.username or "", 
-                         update.effective_user.first_name or "", "")
 
+        elif user_status == "waiting_api_file":
+            # 新增：API转换处理
+            def process_api_conversion():
+                asyncio.run(self.process_api_conversion(update, context, document))
+            thread = threading.Thread(target=process_api_conversion)
+            thread.start()
+        elif user_status == "waiting_api_file":
+            # API转换：阶段1（解析并询问2FA）
+            def process_api_conversion():
+                asyncio.run(self.process_api_conversion(update, context, document))
+            thread = threading.Thread(target=process_api_conversion)
+            thread.start()
+        # 清空用户状态
+        self.db.save_user(
+            user_id,
+            update.effective_user.username or "",
+            update.effective_user.first_name or "",
+            ""
+        )
+
+
+    async def process_api_conversion(self, update, context, document):
+        """API格式转换 - 阶段1：解析文件并询问网页展示的2FA"""
+        user_id = update.effective_user.id
+        start_time = time.time()
+        task_id = f"{user_id}_{int(start_time)}"
+
+        progress_msg = self.safe_send_message(update, "📥 <b>正在处理您的文件...</b>", 'HTML')
+        if not progress_msg:
+            return
+
+        temp_zip = None
+        try:
+            temp_dir = tempfile.mkdtemp(prefix="temp_api_")
+            temp_zip = os.path.join(temp_dir, document.file_name)
+            document.get_file().download(temp_zip)
+
+            files, extract_dir, file_type = self.processor.scan_zip_file(temp_zip, user_id, task_id)
+            if not files:
+                try:
+                    progress_msg.edit_text("❌ <b>未找到有效文件</b>\n\n请确保ZIP包含Session或TData格式的文件", parse_mode='HTML')
+                except:
+                    pass
+                return
+
+            total_files = len(files)
+            try:
+                progress_msg.edit_text(
+                    f"✅ <b>已找到 {total_files} 个账号文件</b>\n"
+                    f"📊 类型: {file_type.upper()}\n\n"
+                    f"🔐 请输入将在网页上显示的 2FA 密码：\n"
+                    f"• 直接发送 2FA 密码，例如: <code>My2FA@2024</code>\n"
+                    f"• 或回复 <b>跳过</b> 使用自动识别\n\n"
+                    f"⏰ 5分钟超时",
+                    parse_mode='HTML'
+                )
+            except:
+                pass
+
+            # 记录待处理任务，等待用户输入2FA
+            self.pending_api_tasks[user_id] = {
+                "files": files,
+                "file_type": file_type,
+                "extract_dir": extract_dir,
+                "task_id": task_id,
+                "progress_msg": progress_msg,
+                "start_time": start_time,
+                "temp_zip": temp_zip
+            }
+        except Exception as e:
+            print(f"❌ API阶段1失败: {e}")
+            try:
+                progress_msg.edit_text(f"❌ 失败: {str(e)}", parse_mode='HTML')
+            except:
+                pass
+            if temp_zip and os.path.exists(temp_zip):
+                try:
+                    shutil.rmtree(os.path.dirname(temp_zip), ignore_errors=True)
+                except:
+                    pass
+    async def continue_api_conversion(self, update, context, user_id: int, two_fa_input: Optional[str]):
+        """API格式转换 - 阶段2：执行转换并生成仅含链接的TXT"""
+        result_files = []
+        task = self.pending_api_tasks.get(user_id)
+        if not task:
+            self.safe_send_message(update, "❌ 没有待处理的API转换任务")
+            return
+
+        files = task["files"]
+        file_type = task["file_type"]
+        extract_dir = task["extract_dir"]
+        task_id = task["task_id"]
+        progress_msg = task["progress_msg"]
+        temp_zip = task["temp_zip"]
+        start_time = task["start_time"]
+
+        override_two_fa = None if (not two_fa_input or two_fa_input.strip().lower() in ["跳过", "skip"]) else two_fa_input.strip()
+
+        # 更新提示
+        try:
+            tip = "🔄 <b>开始转换为API格式...</b>\n\n"
+            if override_two_fa:
+                tip += f"🔐 网页2FA: <code>{override_two_fa}</code>\n"
+            else:
+                tip += "🔐 网页2FA: 自动识别\n"
+            progress_msg.edit_text(tip, parse_mode='HTML')
+        except:
+            pass
+
+        try:
+            # 执行转换（支持手输2FA覆盖）
+            api_accounts = await self.api_converter.convert_to_api_format(files, file_type, override_two_fa)
+            if not api_accounts:
+                try:
+                    progress_msg.edit_text("❌ <b>转换失败</b>\n\n没有成功转换的账号", parse_mode='HTML')
+                except:
+                    pass
+                return
+
+            # 仅生成TXT
+            result_files = self.api_converter.create_api_result_files(api_accounts, task_id)
+            elapsed_time = time.time() - start_time
+
+            # 发送结果（TXT）
+            summary_text = (
+                "🎉 <b>API格式转换完成！</b>\n\n"
+                f"📊 成功: {len(api_accounts)} 个账号\n"
+                f"🌐 链接基址: {config.BASE_URL}\n"
+                f"⏱️ 用时: {int(elapsed_time)} 秒\n\n"
+                "📄 正在发送 TXT（手机号 + 验证码网页链接）..."
+            )
+            try:
+                progress_msg.edit_text(summary_text, parse_mode='HTML')
+            except:
+                pass
+
+            for file_path in result_files:
+                if os.path.exists(file_path):
+                    try:
+                        with open(file_path, 'rb') as f:
+                            caption = "📋 验证码网页链接列表（手机号 + 链接）"
+                            context.bot.send_document(
+                                chat_id=update.effective_chat.id,
+                                document=f,
+                                filename=os.path.basename(file_path),
+                                caption=caption,
+                                parse_mode='HTML'
+                            )
+                        print(f"📤 已发送TXT: {os.path.basename(file_path)}")
+                        await asyncio.sleep(0.5)
+                    except Exception as e:
+                        print(f"❌ 发送TXT失败: {e}")
+
+            # 完成提示
+            self.safe_send_message(
+                update,
+                "✅ 已发送TXT文件。\n如外网打不开链接，请检查 BASE_URL 设置和服务器 5000 端口放行。"
+            )
+
+        except Exception as e:
+            print(f"❌ API阶段2失败: {e}")
+            try:
+                progress_msg.edit_text(f"❌ 失败: {str(e)}", parse_mode='HTML')
+            except:
+                pass
+        finally:
+            # 清理
+            if extract_dir and os.path.exists(extract_dir):
+                shutil.rmtree(extract_dir, ignore_errors=True)
+            if temp_zip and os.path.exists(temp_zip):
+                try:
+                    shutil.rmtree(os.path.dirname(temp_zip), ignore_errors=True)
+                except:
+                    pass
+            if user_id in self.pending_api_tasks:
+                del self.pending_api_tasks[user_id]
+            # 可选：清理生成的TXT（如果你不想保留）
+            try:
+                for file_path in result_files:
+                    if os.path.exists(file_path):
+                        os.remove(file_path)
+                        print(f"🗑️ 已删除TXT: {os.path.basename(file_path)}")
+            except Exception as _:
+                pass
     async def process_enhanced_check(self, update, context, document):
         """增强版检测处理"""
         user_id = update.effective_user.id
@@ -5398,60 +6256,6 @@ class EnhancedBot:
             # 最终消息
             success_rate = (success_count / total_files * 100) if total_files > 0 else 0
             
-            # 如果是 tdata_to_session 转换且有成功的，自动注册到 Web Login API
-            api_links_text = ""
-            if conversion_type == "tdata_to_session" and success_count > 0 and self.login_api_service:
-                api_links_text = "\n\n🌐 <b>Web Login API 链接</b>\n"
-                
-                # 查找转换成功的 session 文件并注册
-                sessions_dir = os.path.join(os.getcwd(), "sessions")
-                registered_count = 0
-                
-                for file_path, file_name, info in results.get("转换成功", []):
-                    try:
-                        # 查找对应的 session 文件
-                        # file_name 是 tdata 目录名，需要找到对应的 session
-                        # session 文件在 results 中的 file_path 指向
-                        session_files = []
-                        if os.path.isdir(file_path):
-                            # 如果是目录，查找其中的 session 文件
-                            for item in os.listdir(file_path):
-                                if item.endswith('.session'):
-                                    session_files.append(os.path.join(file_path, item))
-                        else:
-                            # 如果直接是文件
-                            if file_path.endswith('.session'):
-                                session_files.append(file_path)
-                        
-                        # 也检查 sessions 目录
-                        if os.path.exists(sessions_dir):
-                            for item in os.listdir(sessions_dir):
-                                if item.endswith('.session') and file_name in item:
-                                    session_path = os.path.join(sessions_dir, item)
-                                    if session_path not in session_files:
-                                        session_files.append(session_path)
-                        
-                        # 注册找到的 session 文件
-                        for session_path in session_files:
-                            if os.path.exists(session_path):
-                                phone = os.path.basename(session_path).replace('.session', '')
-                                url = self.login_api_service.register_session(
-                                    session_path=session_path,
-                                    phone=phone,
-                                    api_id=config.API_ID,
-                                    api_hash=config.API_HASH
-                                )
-                                api_links_text += f"📱 {phone}\n🔗 {url}\n\n"
-                                registered_count += 1
-                                
-                    except Exception as e:
-                        print(f"⚠️ 注册 session 到 API 失败 {file_name}: {e}")
-                
-                if registered_count > 0:
-                    api_links_text += f"✅ 已注册 {registered_count} 个账号到 Web Login API\n"
-                else:
-                    api_links_text = ""
-            
             final_text = f"""
 ✅ <b>转换任务完成！</b>
 
@@ -5463,7 +6267,7 @@ class EnhancedBot:
 • 🚀 平均速度: {total_files/elapsed_time:.2f}个/秒
 
 
-📥 {'所有结果文件已发送！'}{api_links_text}
+📥 {'所有结果文件已发送！'}
             """
             
             self.safe_send_message(update, final_text, 'HTML')
@@ -5826,250 +6630,16 @@ class EnhancedBot:
                 del self.two_factor_manager.pending_2fa_tasks[user_id]
                 print(f"🗑️ 清理任务信息: user_id={user_id}")
     
-    async def process_api_conversion(self, update, context, document):
-        """处理API转换 - 将TData或Session转换为API链接"""
-        user_id = update.effective_user.id
-        start_time = time.time()
-        task_id = f"{user_id}_{int(start_time)}"
-        
-        print(f"🌐 开始API转换任务: {task_id}")
-        
-        # 发送进度消息
-        progress_msg = self.safe_send_message(
-            update,
-            "📥 <b>正在处理您的文件...</b>",
-            'HTML'
-        )
-        
-        if not progress_msg:
-            print("❌ 无法发送进度消息")
-            return
-        
-        temp_zip = None
-        extract_dir = None
-        try:
-            # 下载文件
-            temp_dir = tempfile.mkdtemp(prefix="temp_api_")
-            temp_zip = os.path.join(temp_dir, document.file_name)
-            
-            document.get_file().download(temp_zip)
-            print(f"📥 下载文件: {temp_zip}")
-            
-            # 扫描文件
-            files, extract_dir, file_type = self.processor.scan_zip_file(temp_zip, user_id, task_id)
-            
-            if not files:
-                try:
-                    progress_msg.edit_text(
-                        "❌ <b>未找到有效文件</b>\n\n请确保ZIP包含TData或Session格式的账号文件",
-                        parse_mode='HTML'
-                    )
-                except:
-                    pass
-                return
-            
-            total_files = len(files)
-            
-            try:
-                progress_msg.edit_text(
-                    f"🔄 <b>转换 API 进行中...</b>\n\n📁 找到 {total_files} 个文件\n📊 文件类型: {file_type.upper()}\n⏳ 正在初始化...",
-                    parse_mode='HTML'
-                )
-            except:
-                pass
-            
-            # 存储成功转换的session信息
-            success_sessions = []
-            
-            # 如果是TData格式，需要先转换为Session
-            if file_type == "tdata":
-                print(f"📦 检测到TData格式，开始转换为Session...")
-                
-                # 定义进度回调
-                async def conversion_callback(processed, total, results, speed, elapsed):
-                    try:
-                        success_count = len(results.get("转换成功", []))
-                        error_count = len(results.get("转换错误", []))
-                        
-                        progress_text = f"""
-🔄 <b>转换 API 进行中...</b>
-
-📊 <b>当前进度</b>
-• 已处理: {processed}/{total}
-• 速度: {speed:.1f} 个/秒
-• 用时: {int(elapsed)} 秒
-
-✅ <b>转换成功</b>: {success_count}
-❌ <b>转换错误</b>: {error_count}
-
-⏱️ 预计剩余: {int((total - processed) / speed) if speed > 0 else 0} 秒
-                        """
-                        
-                        try:
-                            progress_msg.edit_text(progress_text, parse_mode='HTML')
-                        except:
-                            pass
-                    except Exception as e:
-                        print(f"⚠️ 更新进度失败: {e}")
-                
-                # 执行批量转换
-                conversion_results = await self.converter.batch_convert_with_progress(
-                    files, 
-                    "tdata_to_session",
-                    config.API_ID,
-                    config.API_HASH,
-                    conversion_callback
-                )
-                
-                # 从转换成功的结果中提取session文件
-                sessions_dir = os.path.join(os.getcwd(), "sessions")
-                for file_path, file_name, info in conversion_results.get("转换成功", []):
-                    # 查找转换后的session文件
-                    session_file = os.path.join(sessions_dir, f"{file_name}.session")
-                    if os.path.exists(session_file):
-                        success_sessions.append((session_file, file_name))
-                        print(f"✅ 转换成功: {file_name}")
-                
-                print(f"📊 转换完成: 成功 {len(success_sessions)} 个")
-                
-            elif file_type == "session":
-                print(f"📱 检测到Session格式，直接使用...")
-                # 直接使用session文件
-                for file_path, file_name in files:
-                    if file_path.endswith('.session'):
-                        # 提取手机号（从文件名）
-                        phone = os.path.basename(file_path).replace('.session', '')
-                        success_sessions.append((file_path, phone))
-                        print(f"✅ 找到Session: {phone}")
-            
-            # 为每个session注册到LoginAPI并生成链接
-            print(f"🔗 开始注册 {len(success_sessions)} 个账号到 Web Login API...")
-            
-            api_links = []
-            registered_count = 0
-            
-            for session_path, phone in success_sessions:
-                try:
-                    if os.path.exists(session_path):
-                        url = self.login_api_service.register_session(
-                            session_path=session_path,
-                            phone=phone,
-                            api_id=config.API_ID,
-                            api_hash=config.API_HASH
-                        )
-                        api_links.append((phone, url))
-                        registered_count += 1
-                        print(f"🔗 注册成功: {phone} -> {url}")
-                except Exception as e:
-                    print(f"⚠️ 注册失败 {phone}: {e}")
-            
-            # 生成TXT文件
-            if api_links:
-                result_filename = f"批量转换API_获取成功_{registered_count}.txt"
-                result_path = os.path.join(config.RESULTS_DIR, result_filename)
-                
-                try:
-                    with open(result_path, 'w', encoding='utf-8') as f:
-                        for phone, url in api_links:
-                            f.write(f"{phone} {url}\n")
-                    
-                    print(f"📄 生成结果文件: {result_filename}")
-                except Exception as e:
-                    print(f"❌ 生成文件失败: {e}")
-                    result_path = None
-            else:
-                result_path = None
-            
-            elapsed_time = time.time() - start_time
-            
-            # 发送结果统计
-            summary_text = f"""
-批量转换API｜统计数据
-
-🟢 获取成功: {registered_count}
-
-⏱️ 处理时间: {int(elapsed_time)} 秒
-📊 文件类型: {file_type.upper()}
-
-{'📦 正在发送结果文件...' if result_path else '❌ 没有成功转换的账号'}
-            """
-            
-            try:
-                progress_msg.edit_text(summary_text, parse_mode=None)
-            except:
-                pass
-            
-            # 发送TXT文件
-            if result_path and os.path.exists(result_path):
-                try:
-                    with open(result_path, 'rb') as f:
-                        caption = f"📋 批量转换API结果\n\n🟢 获取成功: {registered_count}个账号\n⏰ 处理时间: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
-                        context.bot.send_document(
-                            chat_id=update.effective_chat.id,
-                            document=f,
-                            filename=result_filename,
-                            caption=caption
-                        )
-                    print(f"📤 发送结果文件: {result_filename}")
-                    
-                    # 清理结果文件
-                    try:
-                        os.remove(result_path)
-                    except:
-                        pass
-                        
-                except Exception as e:
-                    print(f"❌ 发送文件失败: {e}")
-            
-            # 最终消息
-            final_text = f"""
-✅ <b>API转换完成！</b>
-
-📊 <b>转换统计</b>
-• 总计: {total_files}个
-• 🟢 获取成功: {registered_count}个
-• ⏱️ 总用时: {int(elapsed_time)}秒
-
-{'📥 结果文件已发送！' if registered_count > 0 else ''}
-
-如需再次使用，请点击 /start
-            """
-            
-            self.safe_send_message(update, final_text, 'HTML')
-            
-        except Exception as e:
-            print(f"❌ API转换失败: {e}")
-            import traceback
-            traceback.print_exc()
-            
-            try:
-                progress_msg.edit_text(
-                    f"❌ <b>API转换失败</b>\n\n错误: {str(e)}",
-                    parse_mode='HTML'
-                )
-            except:
-                pass
-        
-        finally:
-            # 清理临时文件
-            if extract_dir and os.path.exists(extract_dir):
-                try:
-                    shutil.rmtree(extract_dir, ignore_errors=True)
-                    print(f"🗑️ 清理解压目录: {extract_dir}")
-                except:
-                    pass
-            
-            if temp_zip and os.path.exists(temp_zip):
-                try:
-                    shutil.rmtree(os.path.dirname(temp_zip), ignore_errors=True)
-                    print(f"🗑️ 清理临时文件: {temp_zip}")
-                except:
-                    pass
-    
     def handle_text(self, update: Update, context: CallbackContext):
         user_id = update.effective_user.id
         text = update.message.text
-        
+        # 新增：处理 API 转换等待的 2FA 输入
+        if user_id in getattr(self, "pending_api_tasks", {}):
+            two_fa_input = (text or "").strip()
+            def go_next():
+                asyncio.run(self.continue_api_conversion(update, context, user_id, two_fa_input))
+            threading.Thread(target=go_next, daemon=True).start()
+            return        
         # 检查是否是2FA密码输入
         if user_id in self.two_factor_manager.pending_2fa_tasks:
             # 用户正在等待输入密码
