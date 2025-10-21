@@ -20,6 +20,14 @@ try:
     AIOHTTP_AVAILABLE = True
 except ImportError:
     AIOHTTP_AVAILABLE = False
+    # Create dummy web class to avoid import errors
+    class web:
+        Application = None
+        Request = None
+        Response = None
+        json_response = None
+        AppRunner = None
+        TCPSite = None
     print("⚠️ aiohttp未安装，Web Login API功能不可用")
     print("💡 请安装: pip install aiohttp")
 
