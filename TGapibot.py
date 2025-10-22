@@ -96,6 +96,20 @@ except ImportError:
     print("⚠️ opentele未安装，格式转换功能不可用")
     print("💡 请安装: pip install opentele")
     OPENTELE_AVAILABLE = False
+
+try:
+    from account_classifier import AccountClassifier
+    CLASSIFY_AVAILABLE = True
+    print("✅ 账号分类模块导入成功")
+except Exception as e:
+    CLASSIFY_AVAILABLE = False
+    print(f"⚠️ 账号分类模块不可用: {e}")
+
+try:
+    import phonenumbers
+    print("✅ phonenumbers 导入成功")
+except Exception:
+    print("⚠️ 未安装 phonenumbers（账号国家识别将不可用）")
 # Flask相关导入（新增或确认存在）
 try:
     from flask import Flask, jsonify, request, render_template_string
@@ -4766,6 +4780,10 @@ class EnhancedBot:
         except Exception as e:
             print(f"⚠️ 验证码服务器启动失败: {e}")
 
+        # 初始化账号分类器
+        self.classifier = AccountClassifier() if CLASSIFY_AVAILABLE else None
+        self.pending_classify_tasks: Dict[int, Dict[str, Any]] = {}
+
         self.updater = Updater(config.TOKEN, use_context=True)
         self.dp = self.updater.dispatcher
         
@@ -4785,6 +4803,8 @@ class EnhancedBot:
         self.dp.add_handler(CommandHandler("convert", self.convert_command))
                 # 新增：API格式转换命令
         self.dp.add_handler(CommandHandler("api", self.api_command))
+        # 新增：账号分类命令
+        self.dp.add_handler(CommandHandler("classify", self.classify_command))
         self.dp.add_handler(CallbackQueryHandler(self.handle_callbacks))
         self.dp.add_handler(MessageHandler(Filters.document, self.handle_file))
         self.dp.add_handler(MessageHandler(Filters.text & ~Filters.command, self.handle_text))
@@ -4940,6 +4960,9 @@ class EnhancedBot:
             ],
             [
                 InlineKeyboardButton("🔗 API转换", callback_data="api_conversion"),
+                InlineKeyboardButton("📦 账号分类", callback_data="classify_menu")
+            ],
+            [
                 InlineKeyboardButton("ℹ️ 帮助", callback_data="help")
             ]
         ]
@@ -5961,7 +5984,9 @@ class EnhancedBot:
         elif data == "convert_session_to_tdata":
             self.handle_convert_session_to_tdata(query)
         elif data == "api_conversion":
-            self.handle_api_conversion(query)            
+            self.handle_api_conversion(query)
+        elif data.startswith("classify_") or data == "classify_menu":
+            self.handle_classify_callbacks(update, context, query, data)
         elif query.data == "back_to_main":
             self.show_main_menu(update, user_id)
             # 返回主菜单 - 横排2x2布局
@@ -6388,8 +6413,9 @@ class EnhancedBot:
                 "waiting_convert_session",
                 "waiting_2fa_file",
                 "waiting_api_file",
+                "waiting_classify_file",
             ]:
-                self.safe_send_message(update, "❌ 请先点击 🚀开始检测、🔄格式转换、🔐修改2FA 或 🔗API转换 按钮")
+                self.safe_send_message(update, "❌ 请先点击 🚀开始检测、🔄格式转换、🔐修改2FA、🔗API转换 或 📦账号分类 按钮")
                 return
 
             user_status = row[0]
@@ -6433,6 +6459,12 @@ class EnhancedBot:
             def process_api_conversion():
                 asyncio.run(self.process_api_conversion(update, context, document))
             thread = threading.Thread(target=process_api_conversion)
+            thread.start()
+        elif user_status == "waiting_classify_file":
+            # 账号分类处理
+            def process_classify():
+                asyncio.run(self.process_classify_stage1(update, context, document))
+            thread = threading.Thread(target=process_classify, daemon=True)
             thread.start()
         elif user_status == "waiting_api_file":
             # API转换：阶段1（解析并询问2FA）
@@ -7604,12 +7636,596 @@ class EnhancedBot:
             
             return
         
+        # 检查是否是账号分类数量输入
+        try:
+            conn = sqlite3.connect(config.DB_NAME)
+            c = conn.cursor()
+            c.execute("SELECT status FROM users WHERE user_id = ?", (user_id,))
+            row = c.fetchone()
+            conn.close()
+            
+            if row:
+                user_status = row[0]
+                
+                # 单个数量拆分
+                if user_status == "waiting_classify_qty_single":
+                    try:
+                        qty = int(text.strip())
+                        if qty <= 0:
+                            self.safe_send_message(update, "❌ 请输入大于0的正整数")
+                            return
+                        
+                        # 处理单个数量拆分
+                        def process_single_qty():
+                            asyncio.run(self._classify_split_single_qty(update, context, user_id, qty))
+                        threading.Thread(target=process_single_qty, daemon=True).start()
+                        return
+                    except ValueError:
+                        self.safe_send_message(update, "❌ 请输入有效的正整数")
+                        return
+                
+                # 多个数量拆分
+                elif user_status == "waiting_classify_qty_multi":
+                    try:
+                        parts = text.strip().split()
+                        quantities = [int(p) for p in parts]
+                        if any(q <= 0 for q in quantities):
+                            self.safe_send_message(update, "❌ 所有数量必须大于0")
+                            return
+                        
+                        # 处理多个数量拆分
+                        def process_multi_qty():
+                            asyncio.run(self._classify_split_multi_qty(update, context, user_id, quantities))
+                        threading.Thread(target=process_multi_qty, daemon=True).start()
+                        return
+                    except ValueError:
+                        self.safe_send_message(update, "❌ 请输入有效的正整数，用空格分隔\n例如: 10 20 30")
+                        return
+        except Exception as e:
+            print(f"❌ 检查分类状态失败: {e}")
+        
         # 其他文本消息的处理
         text_lower = text.lower()
         if any(word in text_lower for word in ["你好", "hello", "hi"]):
             self.safe_send_message(update, "👋 你好！发送 /start 开始检测")
         elif "帮助" in text_lower or "help" in text_lower:
             self.safe_send_message(update, "📖 发送 /help 查看帮助")
+    
+    # ================================
+    # 账号分类功能
+    # ================================
+    
+    def classify_command(self, update: Update, context: CallbackContext):
+        """账号分类命令入口"""
+        user_id = update.effective_user.id
+        
+        # 权限检查
+        is_member, _, _ = self.db.check_membership(user_id)
+        if not is_member and not self.db.is_admin(user_id):
+            self.safe_send_message(update, "❌ 需要会员权限才能使用账号分类功能")
+            return
+        
+        if not CLASSIFY_AVAILABLE or not self.classifier:
+            self.safe_send_message(update, "❌ 账号分类功能不可用\n\n请检查 account_classifier.py 模块和 phonenumbers 库是否正确安装")
+            return
+        
+        self.handle_classify_menu(update.callback_query if hasattr(update, 'callback_query') else None, update)
+    
+    def handle_classify_menu(self, query, update=None):
+        """显示账号分类菜单"""
+        if update is None:
+            update = query.message if query else None
+        
+        user_id = query.from_user.id if query else update.effective_user.id
+        
+        # 权限检查
+        is_member, _, _ = self.db.check_membership(user_id)
+        if not is_member and not self.db.is_admin(user_id):
+            if query:
+                self.safe_edit_message(query, "❌ 需要会员权限")
+            else:
+                self.safe_send_message(update, "❌ 需要会员权限")
+            return
+        
+        if not CLASSIFY_AVAILABLE or not self.classifier:
+            msg = "❌ 账号分类功能不可用\n\n请检查依赖库是否正确安装"
+            if query:
+                self.safe_edit_message(query, msg)
+            else:
+                self.safe_send_message(update, msg)
+            return
+        
+        text = """
+📦 <b>账号文件分类</b>
+
+🎯 <b>功能说明</b>
+支持上传包含多个账号的ZIP文件（TData目录或Session+JSON文件），自动识别并分类打包：
+
+📋 <b>支持的分类方式</b>
+1️⃣ <b>按国家区号拆分</b>
+   • 自动识别手机号→区号→国家
+   • 每个国家生成一个ZIP
+   • 命名：国家+区号+数量.zip
+
+2️⃣ <b>按数量拆分</b>
+   • 支持单个或多个数量
+   • 混合国家命名"混合+000+数量.zip"
+   • 全未知命名"未知+000+数量.zip"
+
+💡 <b>使用步骤</b>
+1. 点击下方按钮开始
+2. 上传包含账号的ZIP文件
+3. 选择拆分方式
+4. 等待处理并接收结果
+
+⚠️ <b>注意事项</b>
+• 支持TData和Session两种格式
+• 文件大小限制100MB
+• 自动识别手机号和国家信息
+        """
+        
+        keyboard = InlineKeyboardMarkup([
+            [InlineKeyboardButton("📤 开始上传", callback_data="classify_start")],
+            [InlineKeyboardButton("◀️ 返回主菜单", callback_data="back_to_main")]
+        ])
+        
+        if query:
+            query.answer()
+            try:
+                query.edit_message_text(text, parse_mode='HTML', reply_markup=keyboard)
+            except:
+                pass
+        else:
+            self.safe_send_message(update, text, 'HTML', keyboard)
+    
+    def _classify_buttons_split_type(self) -> InlineKeyboardMarkup:
+        """生成拆分方式选择按钮"""
+        return InlineKeyboardMarkup([
+            [InlineKeyboardButton("🌍 按国家拆分", callback_data="classify_split_country")],
+            [InlineKeyboardButton("🔢 按数量拆分", callback_data="classify_split_quantity")],
+            [InlineKeyboardButton("❌ 取消", callback_data="back_to_main")]
+        ])
+    
+    def _classify_buttons_qty_mode(self) -> InlineKeyboardMarkup:
+        """生成数量模式选择按钮"""
+        return InlineKeyboardMarkup([
+            [InlineKeyboardButton("1️⃣ 单个数量", callback_data="classify_qty_single")],
+            [InlineKeyboardButton("🔢 多个数量", callback_data="classify_qty_multi")],
+            [InlineKeyboardButton("◀️ 返回", callback_data="classify_menu")]
+        ])
+    
+    async def process_classify_stage1(self, update, context, document):
+        """账号分类 - 阶段1：扫描文件并选择拆分方式"""
+        user_id = update.effective_user.id
+        start_time = time.time()
+        task_id = f"{user_id}_{int(start_time)}"
+        
+        progress_msg = self.safe_send_message(update, "📥 <b>正在处理您的文件...</b>", 'HTML')
+        if not progress_msg:
+            return
+        
+        temp_zip = None
+        try:
+            temp_dir = tempfile.mkdtemp(prefix="temp_classify_")
+            temp_zip = os.path.join(temp_dir, document.file_name)
+            document.get_file().download(temp_zip)
+            
+            # 使用FileProcessor扫描
+            files, extract_dir, file_type = self.processor.scan_zip_file(temp_zip, user_id, task_id)
+            
+            if not files:
+                try:
+                    progress_msg.edit_text(
+                        "❌ <b>未找到有效文件</b>\n\n请确保ZIP包含Session或TData格式的账号文件",
+                        parse_mode='HTML'
+                    )
+                except:
+                    pass
+                return
+            
+            # 构建元数据
+            metas = self.classifier.build_meta_from_pairs(files, file_type)
+            total_count = len(metas)
+            
+            # 统计识别情况
+            recognized = sum(1 for m in metas if m.phone)
+            unknown = total_count - recognized
+            
+            # 保存任务信息
+            self.pending_classify_tasks[user_id] = {
+                'metas': metas,
+                'file_type': file_type,
+                'extract_dir': extract_dir,
+                'task_id': task_id,
+                'progress_msg': progress_msg,
+                'start_time': start_time,
+                'temp_zip': temp_zip
+            }
+            
+            # 提示选择拆分方式
+            text = f"""
+✅ <b>文件扫描完成！</b>
+
+📊 <b>统计信息</b>
+• 总账号数: {total_count} 个
+• 已识别: {recognized} 个
+• 未识别: {unknown} 个
+• 文件类型: {file_type.upper()}
+
+🎯 <b>请选择拆分方式：</b>
+            """
+            
+            try:
+                progress_msg.edit_text(
+                    text,
+                    parse_mode='HTML',
+                    reply_markup=self._classify_buttons_split_type()
+                )
+            except:
+                pass
+        
+        except Exception as e:
+            print(f"❌ 分类阶段1失败: {e}")
+            import traceback
+            traceback.print_exc()
+            try:
+                progress_msg.edit_text(f"❌ 处理失败: {str(e)}", parse_mode='HTML')
+            except:
+                pass
+            if temp_zip and os.path.exists(temp_zip):
+                try:
+                    shutil.rmtree(os.path.dirname(temp_zip), ignore_errors=True)
+                except:
+                    pass
+    
+    def _classify_cleanup(self, user_id):
+        """清理分类任务"""
+        if user_id in self.pending_classify_tasks:
+            task = self.pending_classify_tasks[user_id]
+            # 清理临时文件
+            if 'temp_zip' in task and task['temp_zip'] and os.path.exists(task['temp_zip']):
+                try:
+                    shutil.rmtree(os.path.dirname(task['temp_zip']), ignore_errors=True)
+                except:
+                    pass
+            if 'extract_dir' in task and task['extract_dir'] and os.path.exists(task['extract_dir']):
+                try:
+                    shutil.rmtree(task['extract_dir'], ignore_errors=True)
+                except:
+                    pass
+            del self.pending_classify_tasks[user_id]
+        
+        # 清空数据库状态
+        self.db.save_user(user_id, "", "", "")
+    
+    async def _classify_send_bundles(self, update, context, bundles, prefix=""):
+        """统一发送ZIP包并节流"""
+        sent_count = 0
+        for zip_path, display_name, count in bundles:
+            if os.path.exists(zip_path):
+                try:
+                    with open(zip_path, 'rb') as f:
+                        caption = f"📦 <b>{prefix}{display_name}</b>\n包含 {count} 个账号"
+                        context.bot.send_document(
+                            chat_id=update.effective_chat.id,
+                            document=f,
+                            filename=display_name,
+                            caption=caption,
+                            parse_mode='HTML'
+                        )
+                    sent_count += 1
+                    print(f"📤 已发送: {display_name}")
+                    await asyncio.sleep(1.0)  # 节流
+                    
+                    # 发送后删除
+                    try:
+                        os.remove(zip_path)
+                    except:
+                        pass
+                except Exception as e:
+                    print(f"❌ 发送文件失败: {display_name} - {e}")
+        
+        return sent_count
+    
+    async def _classify_split_single_qty(self, update, context, user_id, qty):
+        """按单个数量拆分"""
+        if user_id not in self.pending_classify_tasks:
+            self.safe_send_message(update, "❌ 没有待处理的分类任务")
+            return
+        
+        task = self.pending_classify_tasks[user_id]
+        metas = task['metas']
+        task_id = task['task_id']
+        progress_msg = task['progress_msg']
+        
+        try:
+            total = len(metas)
+            if qty > total:
+                self.safe_send_message(update, f"❌ 数量 {qty} 超过总账号数 {total}")
+                return
+            
+            # 更新提示
+            try:
+                progress_msg.edit_text(
+                    f"🔄 <b>开始按数量拆分...</b>\n\n每包 {qty} 个账号\n总账号: {total} 个",
+                    parse_mode='HTML'
+                )
+            except:
+                pass
+            
+            # 计算需要多少个包
+            num_bundles = (total + qty - 1) // qty
+            sizes = [qty] * (num_bundles - 1) + [total - (num_bundles - 1) * qty]
+            
+            out_dir = os.path.join(config.RESULTS_DIR, f"classify_{task_id}")
+            bundles = self.classifier.split_by_quantities(metas, sizes, out_dir)
+            
+            # 发送结果
+            try:
+                progress_msg.edit_text("📤 <b>正在发送结果...</b>", parse_mode='HTML')
+            except:
+                pass
+            
+            sent = await self._classify_send_bundles(update, context, bundles)
+            
+            # 完成提示
+            self.safe_send_message(
+                update,
+                f"✅ <b>分类完成！</b>\n\n"
+                f"• 总账号: {total} 个\n"
+                f"• 已发送: {sent} 个文件\n"
+                f"• 每包数量: {qty} 个\n\n"
+                f"如需再次使用，请点击 /start",
+                'HTML'
+            )
+            
+            # 清理
+            try:
+                if os.path.exists(out_dir):
+                    shutil.rmtree(out_dir, ignore_errors=True)
+            except:
+                pass
+        
+        except Exception as e:
+            print(f"❌ 单数量拆分失败: {e}")
+            import traceback
+            traceback.print_exc()
+            self.safe_send_message(update, f"❌ 拆分失败: {str(e)}")
+        finally:
+            self._classify_cleanup(user_id)
+    
+    async def _classify_split_multi_qty(self, update, context, user_id, quantities):
+        """按多个数量拆分"""
+        if user_id not in self.pending_classify_tasks:
+            self.safe_send_message(update, "❌ 没有待处理的分类任务")
+            return
+        
+        task = self.pending_classify_tasks[user_id]
+        metas = task['metas']
+        task_id = task['task_id']
+        progress_msg = task['progress_msg']
+        
+        try:
+            total = len(metas)
+            total_requested = sum(quantities)
+            
+            # 更新提示
+            try:
+                progress_msg.edit_text(
+                    f"🔄 <b>开始按数量拆分...</b>\n\n"
+                    f"数量序列: {' '.join(map(str, quantities))}\n"
+                    f"总账号: {total} 个\n"
+                    f"请求数量: {total_requested} 个",
+                    parse_mode='HTML'
+                )
+            except:
+                pass
+            
+            out_dir = os.path.join(config.RESULTS_DIR, f"classify_{task_id}")
+            bundles = self.classifier.split_by_quantities(metas, quantities, out_dir)
+            
+            # 余数提示
+            remainder = total - total_requested
+            remainder_msg = ""
+            if remainder > 0:
+                remainder_msg = f"\n\n⚠️ 剩余 {remainder} 个账号未分配"
+            elif remainder < 0:
+                remainder_msg = f"\n\n⚠️ 请求数量超出，最后一包可能不足"
+            
+            # 发送结果
+            try:
+                progress_msg.edit_text("📤 <b>正在发送结果...</b>", parse_mode='HTML')
+            except:
+                pass
+            
+            sent = await self._classify_send_bundles(update, context, bundles)
+            
+            # 完成提示
+            self.safe_send_message(
+                update,
+                f"✅ <b>分类完成！</b>\n\n"
+                f"• 总账号: {total} 个\n"
+                f"• 已发送: {sent} 个文件\n"
+                f"• 数量序列: {' '.join(map(str, quantities))}{remainder_msg}\n\n"
+                f"如需再次使用，请点击 /start",
+                'HTML'
+            )
+            
+            # 清理
+            try:
+                if os.path.exists(out_dir):
+                    shutil.rmtree(out_dir, ignore_errors=True)
+            except:
+                pass
+        
+        except Exception as e:
+            print(f"❌ 多数量拆分失败: {e}")
+            import traceback
+            traceback.print_exc()
+            self.safe_send_message(update, f"❌ 拆分失败: {str(e)}")
+        finally:
+            self._classify_cleanup(user_id)
+    
+    def handle_classify_callbacks(self, update, context, query, data):
+        """处理分类相关的回调"""
+        user_id = query.from_user.id
+        
+        if data == "classify_menu":
+            self.handle_classify_menu(query)
+        
+        elif data == "classify_start":
+            # 设置状态并提示上传
+            self.db.save_user(
+                user_id,
+                query.from_user.username or "",
+                query.from_user.first_name or "",
+                "waiting_classify_file"
+            )
+            query.answer()
+            try:
+                query.edit_message_text(
+                    "📤 <b>请上传账号文件</b>\n\n"
+                    "支持格式：\n"
+                    "• Session + JSON 文件的ZIP包\n"
+                    "• TData 文件夹的ZIP包\n\n"
+                    "⚠️ 文件大小限制100MB\n"
+                    "⏰ 5分钟超时",
+                    parse_mode='HTML'
+                )
+            except:
+                pass
+        
+        elif data == "classify_split_country":
+            # 按国家拆分
+            if user_id not in self.pending_classify_tasks:
+                query.answer("❌ 任务已过期")
+                return
+            
+            task = self.pending_classify_tasks[user_id]
+            metas = task['metas']
+            task_id = task['task_id']
+            progress_msg = task['progress_msg']
+            
+            query.answer()
+            
+            def process_country():
+                asyncio.run(self._classify_split_by_country(update, context, user_id))
+            threading.Thread(target=process_country, daemon=True).start()
+        
+        elif data == "classify_split_quantity":
+            # 按数量拆分 - 询问模式
+            query.answer()
+            try:
+                query.edit_message_text(
+                    "🔢 <b>选择数量模式：</b>\n\n"
+                    "1️⃣ <b>单个数量</b>\n"
+                    "   按固定数量切分，例如每包10个\n\n"
+                    "🔢 <b>多个数量</b>\n"
+                    "   按多个数量依次切分，例如 10 20 30",
+                    parse_mode='HTML',
+                    reply_markup=self._classify_buttons_qty_mode()
+                )
+            except:
+                pass
+        
+        elif data == "classify_qty_single":
+            # 单个数量模式 - 等待输入
+            self.db.save_user(
+                user_id,
+                query.from_user.username or "",
+                query.from_user.first_name or "",
+                "waiting_classify_qty_single"
+            )
+            query.answer()
+            try:
+                query.edit_message_text(
+                    "🔢 <b>请输入每包的账号数量</b>\n\n"
+                    "例如: <code>10</code>\n\n"
+                    "系统将按此数量切分，最后一包为余数\n"
+                    "⏰ 5分钟超时",
+                    parse_mode='HTML'
+                )
+            except:
+                pass
+        
+        elif data == "classify_qty_multi":
+            # 多个数量模式 - 等待输入
+            self.db.save_user(
+                user_id,
+                query.from_user.username or "",
+                query.from_user.first_name or "",
+                "waiting_classify_qty_multi"
+            )
+            query.answer()
+            try:
+                query.edit_message_text(
+                    "🔢 <b>请输入多个数量（空格分隔）</b>\n\n"
+                    "例如: <code>10 20 30</code>\n\n"
+                    "系统将依次切分：第1包10个，第2包20个，第3包30个\n"
+                    "余数将提示但不打包\n"
+                    "⏰ 5分钟超时",
+                    parse_mode='HTML'
+                )
+            except:
+                pass
+    
+    async def _classify_split_by_country(self, update, context, user_id):
+        """按国家拆分"""
+        if user_id not in self.pending_classify_tasks:
+            self.safe_send_message(update, "❌ 没有待处理的分类任务")
+            return
+        
+        task = self.pending_classify_tasks[user_id]
+        metas = task['metas']
+        task_id = task['task_id']
+        progress_msg = task['progress_msg']
+        
+        try:
+            # 更新提示
+            try:
+                progress_msg.edit_text(
+                    "🔄 <b>开始按国家拆分...</b>\n\n正在分组并打包...",
+                    parse_mode='HTML'
+                )
+            except:
+                pass
+            
+            out_dir = os.path.join(config.RESULTS_DIR, f"classify_{task_id}")
+            bundles = self.classifier.split_by_country(metas, out_dir)
+            
+            # 发送结果
+            try:
+                progress_msg.edit_text("📤 <b>正在发送结果...</b>", parse_mode='HTML')
+            except:
+                pass
+            
+            sent = await self._classify_send_bundles(update, context, bundles)
+            
+            # 完成提示
+            self.safe_send_message(
+                update,
+                f"✅ <b>分类完成！</b>\n\n"
+                f"• 总账号: {len(metas)} 个\n"
+                f"• 已发送: {sent} 个文件\n"
+                f"• 分类方式: 按国家区号\n\n"
+                f"如需再次使用，请点击 /start",
+                'HTML'
+            )
+            
+            # 清理
+            try:
+                if os.path.exists(out_dir):
+                    shutil.rmtree(out_dir, ignore_errors=True)
+            except:
+                pass
+        
+        except Exception as e:
+            print(f"❌ 国家拆分失败: {e}")
+            import traceback
+            traceback.print_exc()
+            self.safe_send_message(update, f"❌ 拆分失败: {str(e)}")
+        finally:
+            self._classify_cleanup(user_id)
     
     def run(self):
         print("🚀 启动增强版机器人（速度优化版）...")
