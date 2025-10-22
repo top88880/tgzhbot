@@ -5,7 +5,15 @@ Telegram账号检测机器人 - V8.0
 二级密码管理器修复完整版
 """
 
+# 放在所有 import 附近（顶层，只执行一次）
 import os
+try:
+    from dotenv import load_dotenv, find_dotenv  # pip install python-dotenv
+    _ENV_FILE = os.getenv("ENV_FILE") or find_dotenv(".env", usecwd=True)
+    load_dotenv(_ENV_FILE, override=True)  # override=True 覆盖系统进程里已有的同名键
+    print(f"✅ .env loaded: {_ENV_FILE or 'None'}")
+except Exception as e:
+    print(f"⚠️ dotenv not used: {e}")
 import sys
 import sqlite3
 import logging
@@ -3153,8 +3161,8 @@ class TwoFactorManager:
                 with open(txt_path, 'w', encoding='utf-8') as f:
                     f.write(f"2FA密码修改报告 - {status}\n")
                     f.write("=" * 50 + "\n\n")
-                    f.write(f"生成时间: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
                     f.write(f"总数: {len(items)}个\n\n")
+                    f.write(f"生成时间: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
                     
                     f.write("详细列表:\n")
                     f.write("-" * 50 + "\n\n")
@@ -3236,21 +3244,21 @@ class TwoFactorManager:
             print(f"⏰ 清理过期任务: user_id={user_id}")
 
 # ================================
-# API格式转换器（新增）
+# 统一版 APIFormatConverter（Python 3.8/3.9 缩进已对齐）
 # ================================
+from typing import Dict, List, Optional, Tuple, Any
+from datetime import datetime, timedelta, timezone
+import os, shutil, time, threading
 
 class APIFormatConverter:
     def __init__(self, *args, **kwargs):
         """
-        兼容构造：支持无参/位置参/关键字参三种调用方式
-        用法示例：
+        支持无参/带参：
           APIFormatConverter()
           APIFormatConverter(db)
           APIFormatConverter(db, base_url)
           APIFormatConverter(db=db, base_url=base_url)
         """
-        import os
-        # 解析参数
         db = kwargs.pop('db', None)
         base_url = kwargs.pop('base_url', None)
         if len(args) >= 1 and db is None:
@@ -3258,272 +3266,179 @@ class APIFormatConverter:
         if len(args) >= 2 and base_url is None:
             base_url = args[1]
 
-        # 注入到实例
         self.db = db
-        self.base_url = (base_url or os.getenv("BASE_URL") or "http://127.0.0.1:5000").rstrip('/')
+        self.base_url = (base_url or os.getenv("BASE_URL") or "http://127.0.0.1:8080").rstrip('/')
 
-        # 其它初始化
+        # 运行态
         self.flask_app = None
-        self.verification_codes = {}
         self.active_sessions = {}
+        self.code_watchers: Dict[str, threading.Thread] = {}
+        self.fresh_watch: Dict[str, bool] = {}          # 是否 fresh（由刷新触发）
+        self.history_window_sec: Dict[str, int] = {}    # fresh 时回扫窗口（秒）
 
-        # 数据库表初始化（没有也不会影响运行）
+        # DB 表结构
         try:
             self.init_api_database()
         except Exception as e:
-            print(f"⚠️ 初始化API数据库时出错: {e}")
+            print("⚠️ 初始化API数据库时出错: %s" % e)
 
-        print(f"🔗 API格式转换器已初始化，BASE_URL={self.base_url}, db={'OK' if self.db else 'None'}")
-class APIFormatConverter:
-    # —— 如果你已有 __init__，保留你的；确保 __init__ 里会调用 self.init_api_database() —— #
+        print("🔗 API格式转换器已初始化，BASE_URL=%s, db=%s" % (self.base_url, "OK" if self.db else "None"))
 
-    # 1) 确保有表
+    # ---------- DB 初始化/迁移 ----------
     def init_api_database(self):
         import sqlite3
         conn = sqlite3.connect(self.db.db_name)
         c = conn.cursor()
+
         c.execute("""
-        CREATE TABLE IF NOT EXISTS api_accounts (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            phone TEXT UNIQUE,
-            api_key TEXT UNIQUE,
-            two_fa_password TEXT,
-            created_at TEXT
-        )""")
+            CREATE TABLE IF NOT EXISTS api_accounts (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                phone TEXT UNIQUE,
+                api_key TEXT UNIQUE,
+                verification_url TEXT,
+                two_fa_password TEXT,
+                session_data TEXT,
+                tdata_path TEXT,
+                status TEXT DEFAULT 'active',
+                created_at TEXT,
+                last_used TEXT
+            )
+        """)
         c.execute("""
-        CREATE TABLE IF NOT EXISTS verification_codes (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            phone TEXT,
-            code TEXT,
-            code_type TEXT,
-            received_at TEXT
-        )""")
+            CREATE TABLE IF NOT EXISTS verification_codes (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                phone TEXT,
+                code TEXT,
+                code_type TEXT,
+                received_at TEXT,
+                used INTEGER DEFAULT 0,
+                expires_at TEXT
+            )
+        """)
+
+        # 迁移缺列
+        def ensure_col(col, ddl):
+            c.execute("PRAGMA table_info(api_accounts)")
+            cols = [r[1] for r in c.fetchall()]
+            if col not in cols:
+                c.execute("ALTER TABLE api_accounts ADD COLUMN %s" % ddl)
+
+        ensure_col("verification_url", "verification_url TEXT")
+        ensure_col("two_fa_password", "two_fa_password TEXT")
+        ensure_col("session_data", "session_data TEXT")
+        ensure_col("tdata_path", "tdata_path TEXT")
+        ensure_col("status", "status TEXT DEFAULT 'active'")
+        ensure_col("created_at", "created_at TEXT")
+        ensure_col("last_used", "last_used TEXT")
+
+        conn.commit()
+        conn.close()
+        print("✅ API数据库表检查/迁移完成")
+
+    # ---------- 工具 ----------
+    def mark_all_codes_used(self, phone: str):
+        import sqlite3
+        conn = sqlite3.connect(self.db.db_name)
+        c = conn.cursor()
+        c.execute("UPDATE verification_codes SET used = 1 WHERE phone = ? AND used = 0", (phone,))
         conn.commit()
         conn.close()
 
-    # 2) 工具：生成 api_key、写入/更新账号、查询账号、保存/获取验证码
-    def generate_api_key(self) -> str:
-        import uuid, hashlib, time
-        raw = f"{uuid.uuid4()}-{time.time()}"
-        return hashlib.md5(raw.encode()).hexdigest()
+    def generate_api_key(self, phone: str) -> str:
+        import hashlib, uuid
+        data = "%s_%s" % (phone, uuid.uuid4())
+        return hashlib.sha256(data.encode()).hexdigest()[:32]
 
-    def upsert_api_account(self, phone: str, two_fa_password: str = "") -> dict:
+    def generate_verification_url(self, api_key: str) -> str:
+        return "%s/verify/%s" % (self.base_url, api_key)
+
+    def save_api_account(
+        self,
+        phone: str,
+        api_key: str,
+        verification_url: str,
+        two_fa_password: str,
+        session_data: str,
+        tdata_path: str,
+        account_info: dict
+    ):
         import sqlite3
         conn = sqlite3.connect(self.db.db_name)
         c = conn.cursor()
-        c.execute("SELECT phone, api_key, two_fa_password FROM api_accounts WHERE phone=?", (phone,))
-        row = c.fetchone()
-        if row:
-            api_key = row[1]
-            if two_fa_password and (row[2] or "") != two_fa_password:
-                c.execute("UPDATE api_accounts SET two_fa_password=? WHERE phone=?", (two_fa_password, phone))
-                conn.commit()
-        else:
-            api_key = self.generate_api_key()
-            c.execute(
-                "INSERT INTO api_accounts(phone, api_key, two_fa_password, created_at) VALUES(?,?,?,datetime('now'))",
-                (phone, api_key, two_fa_password or "")
-            )
-            conn.commit()
+        c.execute("""
+            INSERT OR REPLACE INTO api_accounts
+            (phone, api_key, verification_url, two_fa_password, session_data, tdata_path, status, created_at, last_used)
+            VALUES(?, ?, ?, ?, ?, ?, 'active', ?, ?)
+        """, (
+            phone, api_key, verification_url, two_fa_password or "", session_data or "", tdata_path or "",
+            datetime.now().isoformat(), datetime.now().isoformat()
+        ))
+        conn.commit()
         conn.close()
-        return {"phone": phone, "api_key": api_key, "two_fa_password": two_fa_password or ""}
 
-    def get_account_by_api_key(self, api_key: str):
+    def get_account_by_api_key(self, api_key: str) -> Optional[Dict[str, Any]]:
         import sqlite3
         conn = sqlite3.connect(self.db.db_name)
         c = conn.cursor()
-        c.execute("SELECT phone, api_key, two_fa_password FROM api_accounts WHERE api_key=?", (api_key,))
+        c.execute("""
+            SELECT phone, api_key, verification_url, two_fa_password, session_data, tdata_path
+            FROM api_accounts WHERE api_key=?
+        """, (api_key,))
         row = c.fetchone()
         conn.close()
         if not row:
             return None
-        return {"phone": row[0], "api_key": row[1], "two_fa_password": row[2] or ""}
+        return {
+            "phone": row[0],
+            "api_key": row[1],
+            "verification_url": row[2],
+            "two_fa_password": row[3] or "",
+            "session_data": row[4] or "",
+            "tdata_path": row[5] or ""
+        }
 
-    def save_verification_code(self, phone: str, code: str, code_type: str = "sms"):
+    def save_verification_code(self, phone: str, code: str, code_type: str):
         import sqlite3
         conn = sqlite3.connect(self.db.db_name)
         c = conn.cursor()
-        c.execute(
-            "INSERT INTO verification_codes(phone, code, code_type, received_at) VALUES(?,?,?,datetime('now'))",
-            (phone, code, code_type)
-        )
+        expires_at = (datetime.now() + timedelta(minutes=10)).isoformat()
+        c.execute("""
+            INSERT INTO verification_codes (phone, code, code_type, received_at, expires_at)
+            VALUES (?, ?, ?, ?, ?)
+        """, (phone, code, code_type, datetime.now().isoformat(), expires_at))
         conn.commit()
         conn.close()
+        print("📱 收到验证码: %s - %s" % (phone, code))
 
-    def get_latest_verification_code(self, phone: str):
+    def get_latest_verification_code(self, phone: str) -> Optional[Dict[str, Any]]:
         import sqlite3
         conn = sqlite3.connect(self.db.db_name)
         c = conn.cursor()
-        c.execute(
-            "SELECT code, code_type, received_at FROM verification_codes WHERE phone=? ORDER BY id DESC LIMIT 1",
-            (phone,)
-        )
+        c.execute("""
+            SELECT code, code_type, received_at
+            FROM verification_codes
+            WHERE phone=? AND used=0 AND expires_at > ?
+            ORDER BY received_at DESC
+            LIMIT 1
+        """, (phone, datetime.now().isoformat()))
         row = c.fetchone()
         conn.close()
         if not row:
             return None
         return {"code": row[0], "code_type": row[1], "received_at": row[2]}
 
-    # 3) 阶段2核心：按你的调用签名实现（异步、三参：files, file_type, override_two_fa）
-    async def convert_to_api_format(self, files, file_type: str, override_two_fa: str = None):
-        """
-        输入：
-          - files: list[str]，从阶段1解析出来的文件/目录路径
-          - file_type: 'session'/'tg_session'/'txt'/'csv' 等
-          - override_two_fa: 若提供则覆盖写入 two_fa_password
-        输出：
-          - list[dict] -> [{'phone','api_key','verify_url'} ...]
-        """
-        import os, re, glob
-
-        def pick_phone(text: str):
-            m = re.search(r'(\+?\d{6,20})', text or "")
-            return m.group(1) if m else None
-
-        # 归一化成手机号列表
-        phones = []
-
-        # 容错：files 可能含目录或不同类型文件
-        for p in (files or []):
-            if not p:
-                continue
-            if os.path.isdir(p):
-                # 扫描目录下的 *.session
-                for sp in glob.glob(os.path.join(p, "*.session")):
-                    ph = pick_phone(os.path.basename(sp))
-                    if ph:
-                        phones.append(ph)
-            else:
-                low = p.lower()
-                if low.endswith(".session"):
-                    ph = pick_phone(os.path.basename(p))
-                    if ph:
-                        phones.append(ph)
-                elif low.endswith(".txt"):
-                    try:
-                        with open(p, "r", encoding="utf-8", errors="ignore") as f:
-                            for line in f:
-                                ph = pick_phone(line.strip())
-                                if ph:
-                                    phones.append(ph)
-                    except Exception:
-                        pass
-                elif low.endswith(".csv"):
-                    try:
-                        with open(p, "r", encoding="utf-8", errors="ignore") as f:
-                            for line in f:
-                                ph = pick_phone(line.strip())
-                                if ph:
-                                    phones.append(ph)
-                    except Exception:
-                        pass
-                else:
-                    # 其它类型：从文件名里尽量提取
-                    ph = pick_phone(os.path.basename(p))
-                    if ph:
-                        phones.append(ph)
-
-        # 去重，保持顺序
-        seen = set()
-        normalized = []
-        for ph in phones:
-            if ph not in seen:
-                seen.add(ph)
-                normalized.append(ph)
-
-        # 写库并生成链接
-        results = []
-        for ph in normalized:
-            acc = self.upsert_api_account(ph, override_two_fa or "")
-            verify_url = f"{self.base_url}/verify/{acc['api_key']}"
-            results.append({"phone": acc["phone"], "api_key": acc["api_key"], "verify_url": verify_url})
-
-        return results
-
-    # 4) 生成阶段2要发给用户的TXT
-    def create_api_result_files(self, api_accounts, task_id: str):
-        """
-        输入：api_accounts = [{'phone','api_key','verify_url'}, ...]
-        输出：list[str] 文件路径（目前只生成一个TXT）
-        """
-        import os
-        out_dir = os.path.join(os.getcwd(), "api_results")
-        os.makedirs(out_dir, exist_ok=True)
-        out_txt = os.path.join(out_dir, f"api_links_{task_id}.txt")
-        with open(out_txt, "w", encoding="utf-8") as f:
-            for it in (api_accounts or []):
-                f.write(f"{it['phone']}\t{it['verify_url']}\n")
-        return [out_txt]    
-    def init_api_database(self):
-        """初始化API相关数据库表"""
-        try:
-            conn = sqlite3.connect(self.db.db_name)
-            c = conn.cursor()
-            
-            # API账号表
-            c.execute("""
-                CREATE TABLE IF NOT EXISTS api_accounts (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    phone TEXT UNIQUE,
-                    api_key TEXT UNIQUE,
-                    verification_url TEXT,
-                    two_fa_password TEXT,
-                    session_data TEXT,
-                    tdata_path TEXT,
-                    status TEXT DEFAULT 'active',
-                    created_at TEXT,
-                    last_used TEXT
-                )
-            """)
-            
-            # 验证码表
-            c.execute("""
-                CREATE TABLE IF NOT EXISTS verification_codes (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    phone TEXT,
-                    code TEXT,
-                    code_type TEXT,
-                    received_at TEXT,
-                    used INTEGER DEFAULT 0,
-                    expires_at TEXT
-                )
-            """)
-            
-            conn.commit()
-            conn.close()
-            print("✅ API数据库表初始化完成")
-            
-        except Exception as e:
-            print(f"❌ API数据库初始化失败: {e}")
-    
-    def generate_api_key(self, phone: str) -> str:
-        """生成唯一的API密钥"""
-        import uuid
-        import hashlib
-        data = f"{phone}_{datetime.now().isoformat()}_{uuid.uuid4()}"
-        return hashlib.sha256(data.encode()).hexdigest()[:32]
-    
-    def generate_verification_url(self, api_key: str) -> str:
-        """生成验证码接收页面URL，使用配置的 BASE_URL（不要用 localhost）"""
-        base = self.base_url.rstrip('/')
-        return f"{base}/verify/{api_key}"
-    
+    # ---------- 账号信息提取 ----------
     async def extract_account_info_from_session(self, session_path: str) -> dict:
-        """从Session文件提取账号信息"""
         if not TELETHON_AVAILABLE:
             return {"error": "Telethon未安装"}
-        
         try:
             client = TelegramClient(session_path, config.API_ID, config.API_HASH)
             await client.connect()
-            
             if not await client.is_user_authorized():
                 await client.disconnect()
                 return {"error": "Session未授权"}
-            
             me = await client.get_me()
             await client.disconnect()
-            
             return {
                 "phone": me.phone,
                 "user_id": me.id,
@@ -3532,34 +3447,29 @@ class APIFormatConverter:
                 "last_name": me.last_name,
                 "is_premium": getattr(me, 'premium', False)
             }
-            
         except Exception as e:
-            return {"error": f"提取失败: {str(e)}"}
-    
+            return {"error": "提取失败: %s" % str(e)}
+
     async def extract_account_info_from_tdata(self, tdata_path: str) -> dict:
-        """从TData提取账号信息"""
         if not OPENTELE_AVAILABLE:
             return {"error": "opentele库未安装"}
-        
         try:
             tdesk = TDesktop(tdata_path)
             if not tdesk.isLoaded():
                 return {"error": "TData未授权或无效"}
-            
-            # 临时转换为Session获取信息
-            temp_session = f"temp_api_{int(time.time())}"
+            temp_session = "temp_api_%d" % int(time.time())
             client = await tdesk.ToTelethon(session=temp_session, flag=UseCurrentSession)
-            
             await client.connect()
             me = await client.get_me()
             await client.disconnect()
-            
             # 清理临时session
-            temp_files = [f"{temp_session}.session", f"{temp_session}.session-journal"]
-            for temp_file in temp_files:
-                if os.path.exists(temp_file):
-                    os.remove(temp_file)
-            
+            for suf in (".session", ".session-journal"):
+                p = "%s%s" % (temp_session, suf)
+                if os.path.exists(p):
+                    try:
+                        os.remove(p)
+                    except Exception:
+                        pass
             return {
                 "phone": me.phone,
                 "user_id": me.id,
@@ -3568,376 +3478,1204 @@ class APIFormatConverter:
                 "last_name": me.last_name,
                 "is_premium": getattr(me, 'premium', False)
             }
-            
         except Exception as e:
-            return {"error": f"提取失败: {str(e)}"}
-    
-    async def convert_to_api_format(self, files: List[Tuple[str, str]], file_type: str, override_two_fa: Optional[str] = None) -> List[dict]:
-        """批量转换为API格式；若提供 override_two_fa，则使用其作为统一2FA"""
+            return {"error": "提取失败: %s" % str(e)}
+
+    # ---------- 阶段2：转换为 API 并持久化复制 ----------
+    async def convert_to_api_format(
+        self,
+        files: List[Tuple[str, str]],
+        file_type: str,
+        override_two_fa: Optional[str] = None
+    ) -> List[dict]:
         api_accounts = []
         password_detector = PasswordDetector()
+        sessions_dir = os.path.join(os.getcwd(), "sessions")
+        os.makedirs(sessions_dir, exist_ok=True)
 
         for file_path, file_name in files:
             try:
-                print(f"🔄 处理文件: {file_name}")
                 if file_type == "session":
-                    account_info = await self.extract_account_info_from_session(file_path)
+                    info = await self.extract_account_info_from_session(file_path)
                 else:
-                    account_info = await self.extract_account_info_from_tdata(file_path)
-                if "error" in account_info:
-                    print(f"❌ 提取失败: {file_name} - {account_info['error']}")
+                    info = await self.extract_account_info_from_tdata(file_path)
+
+                if "error" in info:
+                    print("❌ 提取失败: %s - %s" % (file_name, info["error"]))
                     continue
 
-                phone = account_info.get("phone", "unknown")
-                if not phone or phone == "unknown":
-                    print(f"⚠️ 无法获取手机号: {file_name}")
+                phone = info.get("phone")
+                if not phone:
+                    print("⚠️ 无法获取手机号: %s" % file_name)
                     continue
 
-                # 2FA 处理：手动输入优先，否则自动识别
-                if override_two_fa:
-                    two_fa_password = override_two_fa
+                two_fa = override_two_fa or (password_detector.detect_password(file_path, file_type) or "")
+
+                persisted_session = ""
+                persisted_tdata = ""
+
+                if file_type == "session":
+                    dest = os.path.join(sessions_dir, "%s.session" % phone)
+                    try:
+                        shutil.copy2(file_path, dest)
+                    except Exception:
+                        try:
+                            if os.path.exists(dest):
+                                os.remove(dest)
+                            shutil.copy2(file_path, dest)
+                        except Exception as e2:
+                            print("❌ 复制session失败: %s" % e2)
+                            continue
+                    persisted_session = dest
+                    json_src = file_path.replace(".session", ".json")
+                    if os.path.exists(json_src):
+                        try:
+                            shutil.copy2(json_src, os.path.join(sessions_dir, "%s.json" % phone))
+                        except Exception:
+                            pass
                 else:
-                    two_fa_password = password_detector.detect_password(file_path, file_type) or ""
+                    phone_dir = os.path.join(sessions_dir, phone)
+                    tdest = os.path.join(phone_dir, "tdata")
+                    try:
+                        if os.path.exists(tdest):
+                            shutil.rmtree(tdest, ignore_errors=True)
+                        os.makedirs(phone_dir, exist_ok=True)
+                        shutil.copytree(file_path, tdest)
+                    except Exception as e:
+                        print("❌ 复制TData失败: %s" % e)
+                        continue
+                    persisted_tdata = tdest
 
                 api_key = self.generate_api_key(phone)
-                verification_url = self.generate_verification_url(api_key)
+                vurl = self.generate_verification_url(api_key)
 
                 self.save_api_account(
                     phone=phone,
                     api_key=api_key,
-                    verification_url=verification_url,
-                    two_fa_password=two_fa_password,
-                    session_data=file_path if file_type == "session" else "",
-                    tdata_path=file_path if file_type == "tdata" else "",
-                    account_info=account_info
+                    verification_url=vurl,
+                    two_fa_password=two_fa,
+                    session_data=persisted_session,
+                    tdata_path=persisted_tdata,
+                    account_info=info
                 )
 
-                api_format = {
+                api_accounts.append({
                     "phone": phone,
                     "api_key": api_key,
-                    "verification_url": verification_url,
-                    "two_fa_password": two_fa_password,
-                    "account_info": account_info,
+                    "verification_url": vurl,
+                    "two_fa_password": two_fa,
+                    "account_info": info,
                     "created_at": datetime.now().isoformat(),
                     "format_version": "1.0"
-                }
-                api_accounts.append(api_format)
-                print(f"✅ 转换成功: {phone}")
-            except Exception as e:
-                print(f"❌ 处理失败: {file_name} - {str(e)}")
-                continue
-        return api_accounts
-    
-    def save_api_account(self, phone: str, api_key: str, verification_url: str, 
-                        two_fa_password: str, session_data: str, tdata_path: str, 
-                        account_info: dict):
-        """保存API账号到数据库"""
-        try:
-            conn = sqlite3.connect(self.db.db_name)
-            c = conn.cursor()
-            
-            c.execute("""
-                INSERT OR REPLACE INTO api_accounts 
-                (phone, api_key, verification_url, two_fa_password, session_data, 
-                 tdata_path, status, created_at, last_used)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """, (
-                phone, api_key, verification_url, two_fa_password, 
-                session_data, tdata_path, 'active', 
-                datetime.now().isoformat(), datetime.now().isoformat()
-            ))
-            
-            conn.commit()
-            conn.close()
-            
-        except Exception as e:
-            print(f"❌ 保存API账号失败: {e}")
-    
-
-
-
-    def start_web_server(self):
-        if not FLASK_AVAILABLE:
-            print("❌ Flask未安装，无法启动验证码服务器")
-            return
-        if getattr(self, "flask_app", None):
-            return
-
-        self.flask_app = Flask(__name__)
-
-        @self.flask_app.route('/verify/<api_key>')
-        def verification_page(api_key):
-            try:
-                print(f"[VERIFY] start api_key={api_key}", flush=True)
-                account = self.get_account_by_api_key(api_key)
-                print(f"[VERIFY] account={'FOUND' if account else 'NONE'}", flush=True)
-                if not account:
-                    return "❌ 无效的API密钥", 404
-                html = self.render_verification_template(
-                    account['phone'], api_key, account.get('two_fa_password') or ""
-                )
-                print(f"[VERIFY] rendered ok", flush=True)
-                return html
-            except Exception as e:
-                import traceback
-                traceback.print_exc()
-                return f"Server error in /verify: {e}", 500
-
-        # 纯文本版（不用模板）——用来快速判断问题是否来自模板
-        @self.flask_app.route('/verify-plain/<api_key>')
-        def verify_plain(api_key):
-            try:
-                account = self.get_account_by_api_key(api_key)
-                if not account:
-                    return "NO SUCH KEY", 404
-                return f"OK phone={account['phone']} key={api_key}", 200
-            except Exception as e:
-                return f"Server error in /verify-plain: {e}", 500
-
-        @self.flask_app.route('/api/get_code/<api_key>')
-        def get_verification_code(api_key):
-            try:
-                account = self.get_account_by_api_key(api_key)
-                if not account:
-                    return jsonify({"error": "无效的API密钥"}), 404
-                phone = account['phone']
-                latest_code = self.get_latest_verification_code(phone)
-                if latest_code:
-                    return jsonify({
-                        "success": True,
-                        "code": latest_code['code'],
-                        "received_at": latest_code['received_at'],
-                        "type": latest_code['code_type']
-                    })
-                else:
-                    return jsonify({"success": False, "message": "暂无验证码"})
-            except Exception as e:
-                import traceback; traceback.print_exc()
-                return jsonify({"error": str(e)}), 500
-
-        @self.flask_app.route('/api/submit_code', methods=['POST'])
-        def submit_verification_code():
-            try:
-                data = request.json or {}
-                phone = data.get('phone')
-                code = data.get('code')
-                code_type = data.get('type', 'sms')
-                if not phone or not code:
-                    return jsonify({"error": "缺少必要参数"}), 400
-                self.save_verification_code(phone, code, code_type)
-                return jsonify({"success": True, "message": "验证码已保存"})
-            except Exception as e:
-                import traceback; traceback.print_exc()
-                return jsonify({"error": str(e)}), 500
-
-        @self.flask_app.route('/healthz')
-        def healthz():
-            return jsonify({"ok": True, "base_url": self.base_url}), 200
-
-        @self.flask_app.route('/debug/keys')
-        def debug_keys():
-            try:
-                import sqlite3
-                conn = sqlite3.connect(self.db.db_name)
-                c = conn.cursor()
-                c.execute("SELECT phone, api_key FROM api_accounts ORDER BY id DESC LIMIT 20")
-                rows = c.fetchall()
-                conn.close()
-                return jsonify({
-                    "count": len(rows),
-                    "items": [{"phone": r[0], "api_key": r[1]} for r in rows]
                 })
+                print("✅ 转换成功: %s -> %s" % (phone, vurl))
             except Exception as e:
-                return jsonify({"error": str(e)}), 500
+                print("❌ 处理失败: %s - %s" % (file_name, e))
+                continue
 
-        def run_server():
+        return api_accounts
+
+    def create_api_result_files(self, api_accounts: List[dict], task_id: str) -> List[str]:
+        out_dir = os.path.join(os.getcwd(), "api_results")
+        os.makedirs(out_dir, exist_ok=True)
+        out_txt = os.path.join(out_dir, "api_links_%s.txt" % task_id)
+        with open(out_txt, "w", encoding="utf-8") as f:
+            for it in (api_accounts or []):
+                f.write("%s\t%s\n" % (it["phone"], it["verification_url"]))
+        return [out_txt]
+
+    # ---------- 自动监听 777000 ----------
+    def start_code_watch(self, api_key: str, timeout: int = 300, fresh: bool = False, history_window_sec: int = 0):
+        try:
+            acc = self.get_account_by_api_key(api_key)
+            if not acc:
+                return False, "无效的API密钥"
+
+            # 记录模式与回扫窗口；fresh 时清未用旧码
+            self.fresh_watch[api_key] = bool(fresh)
+            self.history_window_sec[api_key] = int(history_window_sec or 0)
+            if fresh:
+                try:
+                    self.mark_all_codes_used(acc.get("phone", ""))
+                except Exception:
+                    pass
+
+            # 已在监听则不重复启动（但已更新 fresh/window 配置）
+            if api_key in self.code_watchers and self.code_watchers[api_key].is_alive():
+                return True, "已在监听"
+
+            def runner():
+                import asyncio
+                asyncio.run(self._watch_code_async(acc, timeout=timeout, api_key=api_key))
+
+            th = threading.Thread(target=runner, daemon=True)
+            self.code_watchers[api_key] = th
+            th.start()
+            return True, "已开始监听"
+        except Exception as e:
+            return False, "启动失败: %s" % e
+
+    async def _watch_code_async(self, acc: Dict[str, Any], timeout: int = 300, api_key: str = ""):
+        if not TELETHON_AVAILABLE:
+            print("❌ Telethon 未安装，自动监听不可用")
+            return
+
+        phone = acc.get("phone", "")
+        session_path = acc.get("session_data") or ""
+        tdata_path = acc.get("tdata_path") or ""
+
+        client = None
+        temp_session_name = None
+        try:
+            is_fresh = bool(self.fresh_watch.get(api_key, False))
+            window_sec = int(self.history_window_sec.get(api_key, 0) or 0)  # 刷新后回扫窗口（秒）
+
+            if session_path and os.path.exists(session_path):
+                client = TelegramClient(session_path, config.API_ID, config.API_HASH)
+            elif tdata_path and os.path.exists(tdata_path) and OPENTELE_AVAILABLE:
+                tdesk = TDesktop(tdata_path)
+                if not tdesk.isLoaded():
+                    print("⚠️ TData 无法加载: %s" % phone)
+                    return
+                temp_session_name = "watch_%s_%d" % (phone, int(time.time()))
+                client = await tdesk.ToTelethon(session=temp_session_name, flag=UseCurrentSession, api=API.TelegramDesktop)
+            else:
+                print("⚠️ 无可用会话（缺少 session 或 tdata），放弃监听: %s" % phone)
+                return
+
+            await client.connect()
+            if not await client.is_user_authorized():
+                print("⚠️ 会话未授权: %s" % phone)
+                await client.disconnect()
+                return
+
+            import re as _re
+            import asyncio as _aio
+            from telethon import events
+
+            def extract_code(text: str):
+                if not text:
+                    return None
+                m = _re.search(r"\b(\d{5,6})\b", text)
+                if m:
+                    return m.group(1)
+                digits = _re.findall(r"\d", text)
+                if len(digits) >= 6:
+                    return "".join(digits[:6])
+                if len(digits) >= 5:
+                    return "".join(digits[:5])
+                return None
+
+            # 历史回扫：fresh 模式仅回扫最近 window_sec；否则回扫10分钟内
             try:
-                import os, traceback
-                host = os.getenv("API_SERVER_HOST", "0.0.0.0")
-                port = int(os.getenv("API_SERVER_PORT", "8080"))
-                print(f"🌐 验证码接收服务器启动: http://{host}:{port}  (BASE_URL={self.base_url})")
-                self.flask_app.run(host=host, port=port, debug=False)
+                entity = await client.get_entity(777000)
+                if is_fresh and window_sec > 0:
+                    cutoff = datetime.now(timezone.utc) - timedelta(seconds=window_sec)
+                    async for msg in client.iter_messages(entity, limit=10):
+                        msg_dt = msg.date
+                        if msg_dt.tzinfo is None:
+                            msg_dt = msg_dt.replace(tzinfo=timezone.utc)
+                        if msg_dt >= cutoff:
+                            code = extract_code(getattr(msg, "raw_text", "") or getattr(msg, "message", ""))
+                            if code:
+                                self.save_verification_code(phone, code, "app")
+                                return
+                elif not is_fresh:
+                    async for msg in client.iter_messages(entity, limit=5):
+                        msg_dt = msg.date
+                        if msg_dt.tzinfo is None:
+                            msg_dt = msg_dt.replace(tzinfo=timezone.utc)
+                        if datetime.now(timezone.utc) - msg_dt <= timedelta(minutes=10):
+                            code = extract_code(getattr(msg, "raw_text", "") or getattr(msg, "message", ""))
+                            if code:
+                                self.save_verification_code(phone, code, "app")
+                                return
             except Exception as e:
-                traceback.print_exc()
-                print(f"❌ Flask服务器启动失败: {e}")
+                print("⚠️ 历史读取失败: %s" % e)
 
-        server_thread = threading.Thread(target=run_server, daemon=True)
-        server_thread.start()
+            got = _aio.Event()
 
+            @client.on(events.NewMessage(from_users=777000))
+            async def on_code(evt):
+                code = extract_code(evt.raw_text or "")
+                # 预处理文本避免 f-string 里的反斜杠问题
+                n_preview = (evt.raw_text or "")
+                n_preview = n_preview.replace("\n", " ")
+                n_preview = n_preview[:120]
+                print("[WATCH] new msg: %s | code=%s" % (n_preview, code))
+                if code:
+                    self.save_verification_code(phone, code, "app")
+                    got.set()
 
+            try:
+                await _aio.wait_for(got.wait(), timeout=timeout)
+            except _aio.TimeoutError:
+                print("⏱️ 监听超时（%ds）: %s" % (timeout, phone))
+        except Exception as e:
+            print("❌ 监听异常 %s: %s" % (phone, e))
+        finally:
+            if client:
+                try:
+                    await client.disconnect()
+                except Exception:
+                    pass
+            if temp_session_name:
+                for suf in (".session", ".session-journal"):
+                    p = "%s%s" % (temp_session_name, suf)
+                    try:
+                        if os.path.exists(p):
+                            os.remove(p)
+                    except Exception:
+                        pass
 
-    def render_verification_template(self, phone: str, api_key: str, two_fa_password: str = "") -> str:
-        template = r'''<!DOCTYPE html>
+    # ---------- Web ----------
+def start_web_server(self):
+    # 不依赖外部 FLASK_AVAILABLE 变量，直接按需导入
+    try:
+        from flask import Flask, jsonify, request, render_template_string
+    except Exception as e:
+        print("❌ Flask 未安装或导入失败: %s" % e)
+        return
+
+    if getattr(self, "flask_app", None):
+        # 已经启动过
+        return
+
+    self.flask_app = Flask(__name__)
+
+    @self.flask_app.route('/verify/<api_key>')
+    def verification_page(api_key):
+        try:
+            account = self.get_account_by_api_key(api_key)
+            if not account:
+                return "❌ 无效的API密钥", 404
+
+            # 若类里有自定义模板方法则调用；否则使用最简模板兜底，避免 500
+            if hasattr(self, "render_verification_template"):
+                return self.render_verification_template(
+                    account['phone'],
+                    api_key,
+                    account.get('two_fa_password') or ""
+                )
+
+            minimal = r'''<!doctype html><meta charset="utf-8">
+<title>Verify {{phone}}</title>
+<div style="font-family:system-ui;padding:24px;background:#0b0f14;color:#e5e7eb">
+  <h2 style="margin:0 0 8px">Top9 验证码接收</h2>
+  <div>Phone: {{phone}}</div>
+  <div id="status" style="margin:12px 0;padding:10px;border:1px solid #243244;border-radius:8px">读取验证码中…</div>
+  <div id="code" style="font-size:40px;font-weight:800;letter-spacing:6px"></div>
+</div>
+<script>
+fetch('/api/start_watch/{{api_key}}',{method:'POST'}).catch(()=>{});
+function tick(){
+  fetch('/api/get_code/{{api_key}}').then(r=>r.json()).then(d=>{
+    if(d.success){document.getElementById('code').textContent=d.code;document.getElementById('status').textContent='验证码已接收';}
+    else{document.getElementById('status').textContent='读取验证码中…'}
+  }).catch(()=>{});
+}
+tick(); setInterval(tick,3000);
+</script>'''
+            return render_template_string(minimal, phone=account['phone'], api_key=api_key)
+        except Exception as e:
+            import traceback
+            traceback.print_exc()
+            return "Template error: %s" % str(e), 500
+
+    @self.flask_app.route('/api/get_code/<api_key>')
+    def api_get_code(api_key):
+        from flask import jsonify
+        account = self.get_account_by_api_key(api_key)
+        if not account:
+            return jsonify({"error": "无效的API密钥"}), 404
+        latest = self.get_latest_verification_code(account['phone'])
+        if latest:
+            return jsonify({
+                "success": True,
+                "code": latest['code'],
+                "type": latest['code_type'],
+                "received_at": latest['received_at']
+            })
+        return jsonify({"success": False, "message": "暂无验证码"})
+
+    @self.flask_app.route('/api/submit_code', methods=['POST'])
+    def api_submit_code():
+        from flask import request, jsonify
+        data = request.json or {}
+        phone = data.get('phone')
+        code = data.get('code')
+        ctype = data.get('type', 'sms')
+        if not phone or not code:
+            return jsonify({"error": "缺少必要参数"}), 400
+        self.save_verification_code(str(phone), str(code), str(ctype))
+        return jsonify({"success": True})
+
+    @self.flask_app.route('/api/start_watch/<api_key>', methods=['POST', 'GET'])
+    def api_start_watch(api_key):
+        # 解析 fresh/window_sec/timeout，容错处理
+        from flask import request, jsonify
+        q = request.args or {}
+        fresh = str(q.get('fresh', '0')).lower() in ('1', 'true', 'yes', 'y', 'on')
+
+        def _safe_float(v, default=0.0):
+            try:
+                if v is None:
+                    return float(default)
+                s = str(v).strip()
+                import re
+                m = re.search(r'[-+]?\d*\.?\d+(?:[eE][-+]?\d+)?', s)
+                if not m:
+                    return float(default)
+                return float(m.group(0))
+            except Exception:
+                return float(default)
+
+        def _safe_int(v, default=0):
+            try:
+                return int(_safe_float(v, default))
+            except Exception:
+                return int(default)
+
+        timeout = _safe_int(q.get('timeout', None), 300)
+        window_sec = _safe_int(q.get('window_sec', None), 0)
+        ok, msg = self.start_code_watch(api_key, timeout=timeout, fresh=fresh, history_window_sec=window_sec)
+        return jsonify({"ok": ok, "message": msg, "timeout": timeout, "window_sec": window_sec})
+
+    @self.flask_app.route('/healthz')
+    def healthz():
+        from flask import jsonify
+        return jsonify({"ok": True, "base_url": self.base_url}), 200
+
+    @self.flask_app.route('/debug/account/<api_key>')
+    def debug_account(api_key):
+        from flask import jsonify
+        acc = self.get_account_by_api_key(api_key)
+        return jsonify(acc or {}), (200 if acc else 404)
+
+    # 独立线程启动，避免嵌套函数缩进问题
+    t = threading.Thread(target=self._run_server, daemon=True)
+    t.start()
+
+def _run_server(self):
+    host = os.getenv("API_SERVER_HOST", "0.0.0.0")
+    port = int(os.getenv("API_SERVER_PORT", "8080"))
+    print("🌐 验证码接收服务器启动: http://%s:%d (BASE_URL=%s)" % (host, port, self.base_url))
+    # 这里直接用 self.flask_app.run；Flask 已在 start_web_server 中导入并实例化
+    self.flask_app.run(host=host, port=port, debug=False)
+# ========== APIFormatConverter 缩进安全补丁 v2（放在类定义之后、实例化之前）==========
+import os, json, threading
+
+# 确保类已定义
+try:
+    APIFormatConverter
+except NameError:
+    raise RuntimeError("请把本补丁放在 class APIFormatConverter 定义之后")
+
+# 环境变量助手：去首尾空格/引号
+def _afc_env(self, key: str, default: str = "") -> str:
+    val = os.getenv(key)
+    if val is None:
+        return default
+    return str(val).strip().strip('"').strip("'")
+
+# 渲染模板：深色主题、内容居中放大、2FA/验证码/手机号复制（HTTPS+回退）、支持 .env 文案、标题模板
+def _afc_render_verification_template(self, phone: str, api_key: str, two_fa_password: str = "") -> str:
+    from flask import render_template_string
+
+    # 文案/标题
+    brand = _afc_env(self, "VERIFY_BRAND", "Top9")
+    badge = _afc_env(self, "VERIFY_BADGE", brand)
+    page_heading = _afc_env(self, "VERIFY_PAGE_HEADING", "验证码接收")
+    page_title_tpl = _afc_env(self, "VERIFY_PAGE_TITLE", "{brand} · {heading} · {phone}")
+    page_title = page_title_tpl.format(brand=(badge or brand), heading=page_heading, phone=phone)
+
+    ad_html_default = _afc_env(
+        self, "VERIFY_FOOTER_HTML",
+        _afc_env(self, "VERIFY_AD_HTML", "Top9 · 安全、极速 · 联系我们：<a href='https://example.com' target='_blank' rel='noopener'>example.com</a>")
+    )
+
+    txt = {
+        "brand_badge": badge,
+        "left_title": _afc_env(self, "VERIFY_LEFT_TITLE", "Telegram Login API"),
+        "left_cn": _afc_env(self, "VERIFY_LEFT_CN", "安全、快速的 Telegram 登录验证服务"),
+        "left_en": _afc_env(self, "VERIFY_LEFT_EN", "Secure and Fast Telegram Authentication Service"),
+        "hero_title": _afc_env(self, "VERIFY_HERO_TITLE", brand),
+        "hero_subtitle": _afc_env(self, "VERIFY_HERO_SUBTITLE", "BRANDED AUTH PORTAL"),
+
+        "page_heading": page_heading,
+        "page_subtext": _afc_env(self, "VERIFY_PAGE_SUBTEXT", "打开此页已自动开始监听 App 内验证码（777000）。"),
+        "phone_label": _afc_env(self, "VERIFY_PHONE_LABEL", "PHONE"),
+        "copy_btn": _afc_env(self, "VERIFY_COPY_BTN", "复制"),
+        "refresh_btn": _afc_env(self, "VERIFY_REFRESH_BTN", "刷新"),
+        "twofa_label": _afc_env(self, "VERIFY_2FA_LABEL", "2FA"),
+        "copy_2fa_btn": _afc_env(self, "VERIFY_COPY_2FA_BTN", "复制2FA"),
+
+        "status_wait": _afc_env(self, "VERIFY_STATUS_WAIT", "读取验证码中 · READING THE VERIFICATION CODE."),
+        "status_ok": _afc_env(self, "VERIFY_STATUS_OK", "验证码已接收 · VERIFICATION CODE RECEIVED."),
+
+        "footer_html": ad_html_default,
+
+        "toast_copied_phone": _afc_env(self, "VERIFY_TOAST_COPIED_PHONE", "已复制手机号"),
+        "toast_copied_code": _afc_env(self, "VERIFY_TOAST_COPIED_CODE", "已复制验证码"),
+        "toast_copied_2fa": _afc_env(self, "VERIFY_TOAST_COPIED_2FA", "已复制 2FA"),
+        "toast_refresh_ok": _afc_env(self, "VERIFY_TOAST_REFRESH_OK", "已刷新，将只获取2分钟内的验证码"),
+        "toast_refresh_fail": _afc_env(self, "VERIFY_TOAST_REFRESH_FAIL", "刷新失败"),
+        "toast_no_code": _afc_env(self, "VERIFY_TOAST_NO_CODE", "暂无验证码可复制"),
+    }
+    txt_json = json.dumps(txt, ensure_ascii=False)
+
+    template = r'''<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
   <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>验证码接收 - {{ phone }}</title>
+  <title>{{ page_title }}</title>
   <style>
-    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-           background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); margin:0; padding:20px; min-height:100vh;
-           display:flex; align-items:center; justify-content:center; }
-    .container { background:white; border-radius:20px; padding:40px; box-shadow:0 20px 40px rgba(0,0,0,0.1);
-                 text-align:center; max-width:420px; width:100%; }
-    .logo { font-size:48px; margin-bottom:20px; }
-    .title { color:#333; font-size:24px; font-weight:600; margin-bottom:10px; }
-    .subtitle { color:#666; font-size:14px; margin-bottom:16px; }
-    .phone-display { background:#f8f9fa; border:2px solid #e9ecef; border-radius:12px; padding:16px;
-                     font-size:18px; font-weight:600; color:#495057; margin-bottom:12px; letter-spacing:1px; }
-    .code-display { background:#e3f2fd; border:2px solid #2196f3; border-radius:12px; padding:20px;
-                    font-size:32px; font-weight:700; color:#1976d2; margin-bottom:10px; letter-spacing:3px; font-family:'Courier New', monospace; }
-    .status { padding:10px 16px; border-radius:8px; font-weight:500; margin:10px 0; }
-    .status.waiting { background:#fff3cd; color:#856404; border:1px solid #ffeaa7; }
-    .status.received { background:#d4edda; color:#155724; border:1px solid #c3e6cb; }
-    .refresh-btn { background:#007bff; color:white; border:none; padding:10px 20px; border-radius:8px;
-                   font-size:16px; cursor:pointer; }
-    .refresh-btn:hover { background:#0056b3; }
-    .time { color:#6c757d; font-size:12px; margin-top:8px; }
-    .footer { margin-top:20px; padding-top:10px; border-top:1px solid #e9ecef; color:#6c757d; font-size:12px; }
+    :root{
+      --bg:#0b0f14; --bg2:#0f1621;
+      --panel:#111827; --panel2:#0f172a;
+      --text:#e5e7eb; --muted:#9ca3af; --border:#243244;
+      --brand1:#06b6d4; --brand2:#3b82f6; --ok:#34d399; --warn:#fbbf24;
+      --accent:#7dd3fc;
+    }
+    *{box-sizing:border-box}
+    html,body{height:100%}
+    body{
+      margin:0; padding:20px; min-height:100%;
+      font-family:Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Arial;
+      color:var(--text);
+      background:
+        radial-gradient(1200px 600px at -10% -10%, rgba(6,182,212,.10), transparent),
+        radial-gradient(900px 500px at 110% 110%, rgba(59,130,246,.10), transparent),
+        linear-gradient(180deg, var(--bg), var(--bg2));
+      display:flex; align-items:center; justify-content:center;
+    }
+    .wrap{ width:100%; max-width:1200px; display:grid; grid-template-columns: 380px 1fr; gap:22px; }
+    @media(max-width:1100px){ .wrap{ grid-template-columns:1fr; } }
+
+    .brand{
+      background:linear-gradient(180deg,#0f172a,#0b1220);
+      border:1px solid var(--border); border-radius:18px; padding:26px; position:relative;
+      box-shadow:0 18px 60px rgba(0,0,0,.45); overflow:hidden;
+    }
+    .badge{ display:inline-block; padding:8px 14px; border-radius:999px; border:1px solid rgba(6,182,212,.4);
+            color:#7dd3fc; background:rgba(6,182,212,.12); font-weight:800; letter-spacing:.5px; }
+    .brand h2{ margin:16px 0 10px; font-size:28px; }
+    .brand p{ margin:0; color:var(--muted); line-height:1.6; }
+    .hero{ margin-top:26px; text-align:center; border:1px dashed var(--border); border-radius:14px; padding:16px; background:rgba(2,6,23,.45); }
+    .hero .big{ font-size:46px; font-weight:900; letter-spacing:2px; color:#93c5fd; }
+
+    .panel{ background:var(--panel); border:1px solid var(--border); border-radius:18px; padding:22px; box-shadow:0 18px 60px rgba(0,0,0,.45); }
+    .inner{ max-width:820px; margin:0 auto; } /* 右侧内容更居中 */
+    .head{ display:flex; align-items:center; justify-content:space-between; gap:12px; }
+    .title{ font-size:24px; font-weight:900; letter-spacing:.3px; }
+    .muted{ color:var(--muted); font-size:14px; }
+
+    .row{ display:flex; align-items:center; gap:12px; flex-wrap:wrap; }
+    .row.center{ justify-content:center; }
+    .pill{ background:rgba(148,163,184,.12); color:#cbd5e1; padding:8px 12px; border-radius:999px; font-size:13px; border:1px solid var(--border); }
+    .btn{ border:none; background:linear-gradient(135deg,var(--brand1),var(--brand2)); color:#fff; padding:10px 16px; border-radius:12px; cursor:pointer; font-weight:800; box-shadow:0 12px 24px rgba(59,130,246,.25); }
+
+    .phone{
+      margin-top:16px; background:var(--panel2); border:1px solid var(--border); border-radius:14px; padding:14px 16px;
+      display:flex; align-items:center; justify-content:center; gap:14px; flex-wrap:wrap;
+    }
+    .phone .number{ font-size:24px; font-weight:900; letter-spacing:1px; color:#e6f0ff; }
+    .btn.secondary{ background:#0b1220; border:1px solid var(--border); color:#9ac5ff; box-shadow:none; }
+
+    .twofa{ margin-top:10px; display:flex; align-items:center; justify-content:center; gap:10px; flex-wrap:wrap; }
+    .twofa code{ background:#0b1220; border:1px solid var(--border); padding:8px 10px; border-radius:10px; font-size:16px; }
+
+    .status{ margin:18px auto 0; padding:14px 16px; border-radius:14px; text-align:center; font-weight:900; border:1px solid var(--border); max-width:820px; }
+    .status.wait{ background:rgba(245,158,11,.12); color:#fbbf24; }
+    .status.ok{ background:rgba(34,197,94,.12); color:var(--ok); }
+
+    .code-wrap{ margin:18px auto 0; padding:20px; border-radius:18px; background:#0b1220; border:2px solid #1e2a3a; display:flex; align-items:center; justify-content:space-between; gap:16px; max-width:820px; }
+    .code{ flex:1; display:flex; justify-content:center; gap:14px; font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,"Liberation Mono",monospace; }
+    .digit{ width:86px; height:94px; border-radius:14px; background:#0c1422; border:2px solid #233247; color:#7dd3fc; font-size:52px; font-weight:900; display:flex; align-items:center; justify-content:center; box-shadow: inset 0 1px 0 rgba(255,255,255,.05), 0 6px 18px rgba(2,6,23,.45); }
+
+    .meta{ margin-top:10px; text-align:center; color:#9ca3af; font-size:13px; }
+
+    .footer{ margin-top:20px; border-top:1px solid var(--border); padding-top:12px; text-align:center; color:#9ca3af; font-size:12px; }
+    .ad{ margin-top:10px; color:#cbd5e1; }
+
+    .toast{
+      position:fixed; left:50%; bottom:26px;
+      transform:translateX(-50%) translateY(20px);
+      background:rgba(15,23,42,.95); color:#e5e7eb;
+      border:1px solid var(--border); padding:10px 14px;
+      border-radius:10px; font-weight:800; font-size:14px;
+      box-shadow:0 12px 30px rgba(0,0,0,.45);
+      opacity:0; pointer-events:none; z-index:9999;
+      transition:opacity .18s ease, transform .18s ease;
+    }
+    .toast.show{ opacity:1; transform:translateX(-50%) translateY(0); }
   </style>
 </head>
 <body>
-  <div class="container">
-    <div class="logo">📱</div>
-    <div class="title">Telegram 验证码接收</div>
-    <div class="subtitle">请取验证码（页面自动刷新）</div>
-    <div class="phone-display">{{ phone }}</div>
-    {% if two_fa %}
-    <div class="subtitle" style="margin-top:10px;">2FA: <code>{{ two_fa }}</code></div>
-    {% endif %}
-    <div id="status" class="status waiting">等待验证码...</div>
-    <div id="code-display" class="code-display" style="display:none;"></div>
-    <div id="time" class="time" style="display:none;"></div>
-    <button class="refresh-btn" onclick="checkCode()">刷新验证码</button>
-    <div class="footer">This page is created by TeleBot API</div>
+  <div class="wrap">
+    <section class="brand">
+      <div class="badge">{{ txt.brand_badge }}</div>
+      <h2>{{ txt.left_title }}</h2>
+      <p>{{ txt.left_cn }}<br>{{ txt.left_en }}</p>
+      <div class="hero">
+        <div class="big">{{ txt.hero_title }}</div>
+        <div class="muted">{{ txt.hero_subtitle }}</div>
+      </div>
+    </section>
+
+    <section class="panel">
+      <div class="inner">
+        <div class="head">
+          <div>
+            <div class="title">{{ txt.page_heading }}</div>
+            <div class="muted">{{ txt.page_subtext }}</div>
+          </div>
+          <button class="btn" id="refresh-btn">{{ txt.refresh_btn }}</button>
+        </div>
+
+        <div class="phone">
+          <span class="pill">{{ txt.phone_label }}</span>
+          <strong class="number">{{ phone }}</strong>
+          <button class="btn secondary" id="copy-phone">{{ txt.copy_btn }}</button>
+          {% if two_fa_password %}
+          <span class="pill">{{ txt.twofa_label }}</span>
+          <code id="twofa-text">{{ two_fa_password }}</code>
+          <button class="btn secondary" id="copy-2fa">{{ txt.copy_2fa_btn }}</button>
+          {% endif %}
+        </div>
+
+        <div id="status" class="status wait">{{ txt.status_wait }}</div>
+
+        <div class="code-wrap" id="code-wrap" style="display:none;">
+          <div class="code" id="code-boxes"></div>
+          <button class="btn" id="copy-code">{{ txt.copy_btn }}</button>
+        </div>
+
+        <div class="meta" id="meta" style="display:none;"></div>
+
+        <div class="footer">
+          <div class="ad">{{ txt.footer_html | safe }}</div>
+        </div>
+      </div>
+    </section>
   </div>
-<script>
-  function checkCode() {
-    fetch('/api/get_code/{{ api_key }}')
-      .then(r => r.json())
-      .then(data => {
-        if (data.success) {
-          document.getElementById('status').className = 'status received';
-          document.getElementById('status').textContent = '✅ 验证码已接收';
-          document.getElementById('code-display').textContent = data.code;
-          document.getElementById('code-display').style.display = 'block';
-          document.getElementById('time').textContent = '接收时间: ' + new Date(data.received_at).toLocaleString();
-          document.getElementById('time').style.display = 'block';
-        } else {
-          document.getElementById('status').className = 'status waiting';
-          document.getElementById('status').textContent = '⏳ 等待验证码...';
-          document.getElementById('code-display').style.display = 'none';
-          document.getElementById('time').style.display = 'none';
+
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+
+  <script>
+    const TXT = {{ txt_json | safe }};
+
+    fetch('/api/start_watch/{{ api_key }}', { method: 'POST' }).catch(()=>{});
+
+    let codeValue = '';
+    let pollingTimer = null;
+    let stopTimer = null;
+    let toastTimer = null;
+
+    function showToast(text, duration){
+      try{
+        const t = document.getElementById('toast');
+        if (!t) return;
+        t.textContent = text || '';
+        t.classList.add('show');
+        if (toastTimer) clearTimeout(toastTimer);
+        toastTimer = setTimeout(()=>{ t.classList.remove('show'); }, duration || 1500);
+      }catch(e){}
+    }
+
+    function notify(msg){
+      try{ if(typeof showToast==='function'){ showToast(msg); } else { alert(msg); } }
+      catch(e){ alert(msg); }
+    }
+    async function copyTextUniversal(text){
+      try{
+        if(!text){ notify('内容为空'); return false; }
+        text = String(text);
+        if (window.isSecureContext && navigator.clipboard && navigator.clipboard.writeText) {
+          await navigator.clipboard.writeText(text);
+          notify('已复制');
+          return true;
         }
-      })
-      .catch(() => {});
-  }
-  checkCode();
-  const timer = setInterval(checkCode, 3000);
-  setTimeout(() => { clearInterval(timer); }, 300000);
-</script>
+        const ta = document.createElement('textarea');
+        ta.value = text;
+        ta.setAttribute('readonly','');
+        ta.style.position = 'fixed';
+        ta.style.top = '-9999px';
+        ta.style.left = '-9999px';
+        ta.style.opacity = '0';
+        document.body.appendChild(ta);
+        const ua = navigator.userAgent.toLowerCase();
+        if (/ipad|iphone|ipod/.test(ua)) {
+          const range = document.createRange();
+          range.selectNodeContents(ta);
+          const sel = window.getSelection();
+          sel.removeAllRanges(); sel.addRange(range);
+          ta.setSelectionRange(0, 999999);
+        } else {
+          ta.select();
+        }
+        const ok = document.execCommand('copy');
+        document.body.removeChild(ta);
+        if (ok) { notify('已复制'); return true; }
+        throw new Error('execCommand copy failed');
+      } catch (e) {
+        console.warn('Copy failed:', e);
+        notify('复制失败，请手动选择并复制');
+        return false;
+      }
+    }
+
+    function renderDigits(code){
+      const box = document.getElementById('code-boxes');
+      box.innerHTML = '';
+      const s = (code || '').trim();
+      for(const ch of s){
+        const d = document.createElement('div');
+        d.className = 'digit';
+        d.textContent = ch;
+        box.appendChild(d);
+      }
+    }
+
+    function setStatus(ok, text){
+      const s = document.getElementById('status');
+      s.className = 'status ' + (ok ? 'ok' : 'wait');
+      s.textContent = text || (ok ? TXT.status_ok : TXT.status_wait);
+    }
+
+    function checkCode(){
+      fetch('/api/get_code/{{ api_key }}')
+        .then(r => r.json())
+        .then(d => {
+          if(d.success){
+            if(d.code && d.code !== codeValue){
+              codeValue = d.code;
+              renderDigits(codeValue);
+              document.getElementById('code-wrap').style.display = 'flex';
+              document.getElementById('meta').style.display = 'block';
+              document.getElementById('meta').textContent = '接收时间：' + new Date(d.received_at).toLocaleString();
+              setStatus(true);
+            }
+          }else{
+            setStatus(false);
+          }
+        }).catch(()=>{});
+    }
+
+    function startPolling(){
+      if(pollingTimer) clearInterval(pollingTimer);
+      if(stopTimer) clearTimeout(stopTimer);
+      checkCode();
+      pollingTimer = setInterval(checkCode, 3000);
+      stopTimer = setTimeout(()=>{ clearInterval(pollingTimer); }, 300000);
+    }
+
+    document.getElementById('refresh-btn').addEventListener('click', ()=>{
+      const s = document.getElementById('status');
+      s.className = 'status wait';
+      s.textContent = TXT.status_wait;
+      document.getElementById('code-wrap').style.display = 'none';
+      document.getElementById('meta').style.display = 'none';
+      document.getElementById('meta').textContent = '';
+      fetch('/api/start_watch/{{ api_key }}?fresh=1&window_sec=120', { method: 'POST' })
+        .then(()=>{ showToast(TXT.toast_refresh_ok); setTimeout(checkCode, 500); })
+        .catch(()=>{ showToast(TXT.toast_refresh_fail); });
+    });
+
+    (function(){
+      const btn = document.getElementById('copy-phone');
+      if (!btn) return;
+      btn.addEventListener('click', ()=>{
+        const el = document.querySelector('.phone .number');
+        const v = (el && (el.textContent || el.innerText || '')).trim();
+        copyTextUniversal(v);
+      });
+    })();
+
+    (function(){
+      const btn = document.getElementById('copy-2fa');
+      if (!btn) return;
+      btn.addEventListener('click', ()=>{
+        const el = document.getElementById('twofa-text');
+        const v = (el && (el.textContent || el.innerText || '')).trim();
+        copyTextUniversal(v);
+      });
+    })();
+
+    (function(){
+      const btn = document.getElementById('copy-code');
+      if (!btn) return;
+      btn.addEventListener('click', ()=>{
+        const v = (typeof window.codeValue !== 'undefined' ? window.codeValue : '') || '';
+        copyTextUniversal(v);
+      });
+    })();
+
+    startPolling();
+  </script>
 </body>
 </html>'''
-        return render_template_string(
-            template,
-            phone=phone,
-            api_key=api_key,
-            two_fa=two_fa_password
-        )
-    
-    def get_account_by_api_key(self, api_key: str) -> dict:
-        """根据API密钥获取账号信息"""
+    return render_template_string(
+        template,
+        phone=phone,
+        api_key=api_key,
+        two_fa_password=two_fa_password,
+        txt=txt,
+        txt_json=txt_json,
+        page_title=page_title
+    )
+
+# Web 服务器（按需导入 Flask）
+def _afc_start_web_server(self):
+    try:
+        from flask import Flask, jsonify, request, render_template_string
+    except Exception as e:
+        print("❌ Flask 导入失败: %s" % e)
+        return
+
+    if getattr(self, "flask_app", None):
+        return
+
+    self.flask_app = Flask(__name__)
+
+    @self.flask_app.route('/verify/<api_key>')
+    def _verify(api_key):
         try:
-            conn = sqlite3.connect(self.db.db_name)
-            c = conn.cursor()
-            c.execute("SELECT * FROM api_accounts WHERE api_key = ?", (api_key,))
-            row = c.fetchone()
-            conn.close()
-            
-            if row:
-                return {
-                    'phone': row[1],
-                    'api_key': row[2],
-                    'verification_url': row[3],
-                    'two_fa_password': row[4],
-                    'status': row[7]
-                }
-            return None
-        except:
-            return None
-    
-    def save_verification_code(self, phone: str, code: str, code_type: str):
-        """保存验证码"""
-        try:
-            conn = sqlite3.connect(self.db.db_name)
-            c = conn.cursor()
-            
-            expires_at = (datetime.now() + timedelta(minutes=10)).isoformat()
-            
-            c.execute("""
-                INSERT INTO verification_codes 
-                (phone, code, code_type, received_at, expires_at)
-                VALUES (?, ?, ?, ?, ?)
-            """, (phone, code, code_type, datetime.now().isoformat(), expires_at))
-            
-            conn.commit()
-            conn.close()
-            
-            print(f"📱 收到验证码: {phone} - {code}")
-            
+            account = self.get_account_by_api_key(api_key)
+            if not account:
+                return "❌ 无效的API密钥", 404
+            return self.render_verification_template(
+                account['phone'], api_key, account.get('two_fa_password') or ""
+            )
         except Exception as e:
-            print(f"❌ 保存验证码失败: {e}")
-    
-    def get_latest_verification_code(self, phone: str) -> dict:
-        """获取最新验证码"""
-        try:
-            conn = sqlite3.connect(self.db.db_name)
-            c = conn.cursor()
-            c.execute("""
-                SELECT code, code_type, received_at 
-                FROM verification_codes 
-                WHERE phone = ? AND expires_at > ? 
-                ORDER BY received_at DESC 
-                LIMIT 1
-            """, (phone, datetime.now().isoformat()))
-            
-            row = c.fetchone()
-            conn.close()
-            
-            if row:
-                return {
-                    'code': row[0],
-                    'code_type': row[1],
-                    'received_at': row[2]
-                }
-            return None
-        except:
-            return None
-    
+            import traceback
+            traceback.print_exc()
+            return "Template error: %s" % str(e), 500
 
-    def create_api_result_files(self, api_accounts: List[dict], task_id: str) -> List[str]:
-        """仅生成一个TXT列表（手机号 + 验证码网页链接），不再打包ZIP"""
-        result_files = []
-        if not api_accounts:
-            return result_files
-        try:
-            # 直接在 results 目录生成一个TXT
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            txt_filename = f"api_links_{len(api_accounts)}个_{timestamp}.txt"
-            txt_path = os.path.join(config.RESULTS_DIR, txt_filename)
+    @self.flask_app.route('/api/get_code/<api_key>')
+    def _get_code(api_key):
+        account = self.get_account_by_api_key(api_key)
+        if not account:
+            return jsonify({"error":"无效的API密钥"}), 404
+        latest = self.get_latest_verification_code(account['phone'])
+        if latest:
+            return jsonify({"success":True,"code":latest["code"],"type":latest["code_type"],"received_at":latest["received_at"]})
+        return jsonify({"success":False,"message":"暂无验证码"})
 
-            with open(txt_path, 'w', encoding='utf-8') as f:
-                f.write("手机号\t验证码网页链接\n")
-                f.write("=" * 50 + "\n")
-                for account in api_accounts:
-                    phone = account.get('phone', '')
-                    url = account.get('verification_url', '')
-                    f.write(f"{phone}\t{url}\n")
+    @self.flask_app.route('/api/submit_code', methods=['POST'])
+    def _submit():
+        data = request.json or {}
+        phone = data.get('phone'); code = data.get('code'); ctype = data.get('type','sms')
+        if not phone or not code:
+            return jsonify({"error":"缺少必要参数"}), 400
+        self.save_verification_code(str(phone), str(code), str(ctype))
+        return jsonify({"success":True})
 
-            print(f"✅ 生成API链接TXT: {txt_path}")
-            return [txt_path]  # 返回TXT文件路径列表（只有一个）
-        except Exception as e:
-            print(f"❌ 创建API链接TXT失败: {e}")
-            return []
+    @self.flask_app.route('/api/start_watch/<api_key>', methods=['POST','GET'])
+    def _start_watch(api_key):
+        q = request.args or {}
+        def _safe_float(v, default=0.0):
+            try:
+                if v is None: return float(default)
+                import re; m = re.search(r'[-+]?\d*\.?\d+(?:[eE][-+]?\d+)?', str(v).strip())
+                return float(m.group(0)) if m else float(default)
+            except Exception:
+                return float(default)
+        def _safe_int(v, default=0):
+            try: return int(_safe_float(v, default))
+            except Exception: return int(default)
+
+        fresh = str(q.get('fresh','0')).lower() in ('1','true','yes','y','on')
+        timeout = _safe_int(q.get('timeout', None), 300)
+        window_sec = _safe_int(q.get('window_sec', None), 0)
+        ok, msg = self.start_code_watch(api_key, timeout=timeout, fresh=fresh, history_window_sec=window_sec)
+        return jsonify({"ok":ok,"message":msg,"timeout":timeout,"window_sec":window_sec})
+
+    @self.flask_app.route('/healthz')
+    def _healthz():
+        return jsonify({"ok":True,"base_url":self.base_url}), 200
+
+    t = threading.Thread(target=self._run_server, daemon=True)
+    t.start()
+
+def _afc_run_server(self):
+    host = os.getenv("API_SERVER_HOST", "0.0.0.0")
+    port = int(os.getenv("API_SERVER_PORT", "8080"))
+    print("🌐 验证码接收服务器启动: http://%s:%d (BASE_URL=%s)" % (host, port, self.base_url))
+    self.flask_app.run(host=host, port=port, debug=False)
+
+# 把方法安全挂到类上（先定义，后挂载；用 hasattr 避免引用未定义名字）
+if not hasattr(APIFormatConverter, "_env"):
+    APIFormatConverter._env = _afc_env
+if not hasattr(APIFormatConverter, "render_verification_template"):
+    APIFormatConverter.render_verification_template = _afc_render_verification_template
+if not hasattr(APIFormatConverter, "start_web_server"):
+    APIFormatConverter.start_web_server = _afc_start_web_server
+if not hasattr(APIFormatConverter, "_run_server"):
+    APIFormatConverter._run_server = _afc_run_server
+# ========== 补丁结束 ==========
+
+def render_verification_template(self, phone: str, api_key: str, two_fa_password: str = "") -> str:
+    import os
+    import json
+    from flask import render_template_string
+
+    # 本地 env 助手：去首尾空格/引号
+    def _env(key: str, default: str = "") -> str:
+        val = os.getenv(key)
+        if val is None:
+            return default
+        return str(val).strip().strip('"').strip("'")
+
+    # 文案与标题
+    brand = _env("VERIFY_BRAND", "Top9")
+    badge = _env("VERIFY_BADGE", brand)
+    page_heading = _env("VERIFY_PAGE_HEADING", "验证码接收")
+    page_title_tpl = _env("VERIFY_PAGE_TITLE", "{brand} · {heading} · {phone}")
+    page_title = page_title_tpl.format(brand=(badge or brand), heading=page_heading, phone=phone)
+
+    ad_html_default = _env(
+        "VERIFY_FOOTER_HTML",
+        _env("VERIFY_AD_HTML", "Top9 · 安全、极速 · 联系我们：<a href='https://example.com' target='_blank' rel='noopener'>example.com</a>")
+    )
+
+    txt = {
+        "brand_badge": badge,
+        "left_title": _env("VERIFY_LEFT_TITLE", "Telegram Login API"),
+        "left_cn": _env("VERIFY_LEFT_CN", "安全、快速的 Telegram 登录验证服务"),
+        "left_en": _env("VERIFY_LEFT_EN", "Secure and Fast Telegram Authentication Service"),
+        "hero_title": _env("VERIFY_HERO_TITLE", brand),
+        "hero_subtitle": _env("VERIFY_HERO_SUBTITLE", "BRANDED AUTH PORTAL"),
+
+        "page_heading": page_heading,
+        "page_subtext": _env("VERIFY_PAGE_SUBTEXT", "打开此页已自动开始监听 App 内验证码（777000）。"),
+        "phone_label": _env("VERIFY_PHONE_LABEL", "PHONE"),
+        "copy_btn": _env("VERIFY_COPY_BTN", "复制"),
+        "refresh_btn": _env("VERIFY_REFRESH_BTN", "刷新"),
+        "twofa_label": _env("VERIFY_2FA_LABEL", "2FA"),
+        "copy_2fa_btn": _env("VERIFY_COPY_2FA_BTN", "复制2FA"),
+
+        "status_wait": _env("VERIFY_STATUS_WAIT", "读取验证码中 · READING THE VERIFICATION CODE."),
+        "status_ok": _env("VERIFY_STATUS_OK", "验证码已接收 · VERIFICATION CODE RECEIVED."),
+
+        "footer_html": ad_html_default,
+
+        "toast_copied_phone": _env("VERIFY_TOAST_COPIED_PHONE", "已复制手机号"),
+        "toast_copied_code": _env("VERIFY_TOAST_COPIED_CODE", "已复制验证码"),
+        "toast_copied_2fa": _env("VERIFY_TOAST_COPIED_2FA", "已复制 2FA"),
+        "toast_refresh_ok": _env("VERIFY_TOAST_REFRESH_OK", "已刷新，将只获取2分钟内的验证码"),
+        "toast_refresh_fail": _env("VERIFY_TOAST_REFRESH_FAIL", "刷新失败"),
+        "toast_no_code": _env("VERIFY_TOAST_NO_CODE", "暂无验证码可复制"),
+    }
+    txt_json = json.dumps(txt, ensure_ascii=False)
+
+    template = r'''<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{{ page_title }}</title>
+  <style>
+    :root{
+      --bg:#0b0f14; --bg2:#0f1621;
+      --panel:#111827; --panel2:#0f172a;
+      --text:#e5e7eb; --muted:#9ca3af; --border:#243244;
+      --brand1:#06b6d4; --brand2:#3b82f6; --ok:#34d399; --warn:#fbbf24;
+      --accent:#7dd3fc;
+    }
+    *{box-sizing:border-box}
+    html,body{height:100%}
+    body{
+      margin:0; padding:20px; min-height:100%;
+      font-family:Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Arial;
+      color:var(--text);
+      background:
+        radial-gradient(1200px 600px at -10% -10%, rgba(6,182,212,.10), transparent),
+        radial-gradient(900px 500px at 110% 110%, rgba(59,130,246,.10), transparent),
+        linear-gradient(180deg, var(--bg), var(--bg2));
+      display:flex; align-items:center; justify-content:center;
+    }
+    .wrap{ width:100%; max-width:1200px; display:grid; grid-template-columns: 380px 1fr; gap:22px; }
+    @media(max-width:1100px){ .wrap{ grid-template-columns:1fr; } }
+
+    .brand{
+      background:linear-gradient(180deg,#0f172a,#0b1220);
+      border:1px solid var(--border); border-radius:18px; padding:26px; position:relative;
+      box-shadow:0 18px 60px rgba(0,0,0,.45); overflow:hidden;
+    }
+    .badge{ display:inline-block; padding:8px 14px; border-radius:999px; border:1px solid rgba(6,182,212,.4);
+            color:#7dd3fc; background:rgba(6,182,212,.12); font-weight:800; letter-spacing:.5px; }
+    .brand h2{ margin:16px 0 10px; font-size:28px; }
+    .brand p{ margin:0; color:var(--muted); line-height:1.6; }
+    .hero{ margin-top:26px; text-align:center; border:1px dashed var(--border); border-radius:14px; padding:16px; background:rgba(2,6,23,.45); }
+    .hero .big{ font-size:46px; font-weight:900; letter-spacing:2px; color:#93c5fd; }
+
+    .panel{ background:var(--panel); border:1px solid var(--border); border-radius:18px; padding:22px; box-shadow:0 18px 60px rgba(0,0,0,.45); }
+    .inner{ max-width:820px; margin:0 auto; } /* 右侧内容更居中 */
+    .head{ display:flex; align-items:center; justify-content:space-between; gap:12px; }
+    .title{ font-size:24px; font-weight:900; letter-spacing:.3px; }
+    .muted{ color:var(--muted); font-size:14px; }
+
+    .row{ display:flex; align-items:center; gap:12px; flex-wrap:wrap; }
+    .row.center{ justify-content:center; }
+    .pill{ background:rgba(148,163,184,.12); color:#cbd5e1; padding:8px 12px; border-radius:999px; font-size:13px; border:1px solid var(--border); }
+    .btn{ border:none; background:linear-gradient(135deg,var(--brand1),var(--brand2)); color:#fff; padding:10px 16px; border-radius:12px; cursor:pointer; font-weight:800; box-shadow:0 12px 24px rgba(59,130,246,.25); }
+
+    .phone{
+      margin-top:16px; background:var(--panel2); border:1px solid var(--border); border-radius:14px; padding:14px 16px;
+      display:flex; align-items:center; justify-content:center; gap:14px; flex-wrap:wrap;
+    }
+    .phone .number{ font-size:24px; font-weight:900; letter-spacing:1px; color:#e6f0ff; }
+    .btn.secondary{ background:#0b1220; border:1px solid var(--border); color:#9ac5ff; box-shadow:none; }
+
+    .twofa{ margin-top:10px; display:flex; align-items:center; justify-content:center; gap:10px; flex-wrap:wrap; }
+    .twofa code{ background:#0b1220; border:1px solid var(--border); padding:8px 10px; border-radius:10px; font-size:16px; }
+
+    .status{ margin:18px auto 0; padding:14px 16px; border-radius:14px; text-align:center; font-weight:900; border:1px solid var(--border); max-width:820px; }
+    .status.wait{ background:rgba(245,158,11,.12); color:#fbbf24; }
+    .status.ok{ background:rgba(34,197,94,.12); color:var(--ok); }
+
+    .code-wrap{ margin:18px auto 0; padding:20px; border-radius:18px; background:#0b1220; border:2px solid #1e2a3a; display:flex; align-items:center; justify-content:space-between; gap:16px; max-width:820px; }
+    .code{ flex:1; display:flex; justify-content:center; gap:14px; font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,"Liberation Mono",monospace; }
+    .digit{ width:86px; height:94px; border-radius:14px; background:#0c1422; border:2px solid #233247; color:#7dd3fc; font-size:52px; font-weight:900; display:flex; align-items:center; justify-content:center; box-shadow: inset 0 1px 0 rgba(255,255,255,.05), 0 6px 18px rgba(2,6,23,.45); }
+
+    .meta{ margin-top:10px; text-align:center; color:#9ca3af; font-size:13px; }
+
+    .footer{ margin-top:20px; border-top:1px solid var(--border); padding-top:12px; text-align:center; color:#9ca3af; font-size:12px; }
+    .ad{ margin-top:10px; color:#cbd5e1; }
+
+    .toast{
+      position:fixed; left:50%; bottom:26px;
+      transform:translateX(-50%) translateY(20px);
+      background:rgba(15,23,42,.95); color:#e5e7eb;
+      border:1px solid var(--border); padding:10px 14px;
+      border-radius:10px; font-weight:800; font-size:14px;
+      box-shadow:0 12px 30px rgba(0,0,0,.45);
+      opacity:0; pointer-events:none; z-index:9999;
+      transition:opacity .18s ease, transform .18s ease;
+    }
+    .toast.show{ opacity:1; transform:translateX(-50%) translateY(0); }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <section class="brand">
+      <div class="badge">{{ txt.brand_badge }}</div>
+      <h2>{{ txt.left_title }}</h2>
+      <p>{{ txt.left_cn }}<br>{{ txt.left_en }}</p>
+      <div class="hero">
+        <div class="big">{{ txt.hero_title }}</div>
+        <div class="muted">{{ txt.hero_subtitle }}</div>
+      </div>
+    </section>
+
+    <section class="panel">
+      <div class="inner">
+        <div class="head">
+          <div>
+            <div class="title">{{ txt.page_heading }}</div>
+            <div class="muted">{{ txt.page_subtext }}</div>
+          </div>
+          <button class="btn" id="refresh-btn">{{ txt.refresh_btn }}</button>
+        </div>
+
+        <div class="phone">
+          <span class="pill">{{ txt.phone_label }}</span>
+          <strong class="number">{{ phone }}</strong>
+          <button class="btn secondary" id="copy-phone">{{ txt.copy_btn }}</button>
+          {% if two_fa_password %}
+          <span class="pill">{{ txt.twofa_label }}</span>
+          <code id="twofa-text">{{ two_fa_password }}</code>
+          <button class="btn secondary" id="copy-2fa">{{ txt.copy_2fa_btn }}</button>
+          {% endif %}
+        </div>
+
+        <div id="status" class="status wait">{{ txt.status_wait }}</div>
+
+        <div class="code-wrap" id="code-wrap" style="display:none;">
+          <div class="code" id="code-boxes"></div>
+          <button class="btn" id="copy-code">{{ txt.copy_btn }}</button>
+        </div>
+
+        <div class="meta" id="meta" style="display:none;"></div>
+
+        <div class="footer">
+          <div class="ad">{{ txt.footer_html | safe }}</div>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+
+  <script>
+    const TXT = {{ txt_json | safe }};
+
+    // 初次打开：保持原监听（允许回扫10分钟内历史）
+    fetch('/api/start_watch/{{ api_key }}', { method: 'POST' }).catch(()=>{});
+
+    let codeValue = '';
+    let pollingTimer = null;
+    let stopTimer = null;
+    let toastTimer = null;
+
+    function showToast(text, duration){
+      try{
+        const t = document.getElementById('toast');
+        if (!t) return;
+        t.textContent = text || '';
+        t.classList.add('show');
+        if (toastTimer) clearTimeout(toastTimer);
+        toastTimer = setTimeout(()=>{ t.classList.remove('show'); }, duration || 1500);
+      }catch(e){}
+    }
+
+    // ========== 复制兼容函数（HTTPS + 回退） ==========
+    function notify(msg){
+      try{ if(typeof showToast==='function'){ showToast(msg); } else { alert(msg); } }
+      catch(e){ alert(msg); }
+    }
+    async function copyTextUniversal(text){
+      try{
+        if(!text){ notify('内容为空'); return false; }
+        text = String(text);
+        if (window.isSecureContext && navigator.clipboard && navigator.clipboard.writeText) {
+          await navigator.clipboard.writeText(text);
+          notify('已复制');
+          return true;
+        }
+        const ta = document.createElement('textarea');
+        ta.value = text;
+        ta.setAttribute('readonly','');
+        ta.style.position = 'fixed';
+        ta.style.top = '-9999px';
+        ta.style.left = '-9999px';
+        ta.style.opacity = '0';
+        document.body.appendChild(ta);
+        const ua = navigator.userAgent.toLowerCase();
+        if (/ipad|iphone|ipod/.test(ua)) {
+          const range = document.createRange();
+          range.selectNodeContents(ta);
+          const sel = window.getSelection();
+          sel.removeAllRanges(); sel.addRange(range);
+          ta.setSelectionRange(0, 999999);
+        } else {
+          ta.select();
+        }
+        const ok = document.execCommand('copy');
+        document.body.removeChild(ta);
+        if (ok) { notify('已复制'); return true; }
+        throw new Error('execCommand copy failed');
+      } catch (e) {
+        console.warn('Copy failed:', e);
+        notify('复制失败，请手动选择并复制');
+        return false;
+      }
+    }
+    // ========== 复制兼容函数结束 ==========
+
+    function renderDigits(code){
+      const box = document.getElementById('code-boxes');
+      box.innerHTML = '';
+      const s = (code || '').trim();
+      for(const ch of s){
+        const d = document.createElement('div');
+        d.className = 'digit';
+        d.textContent = ch;
+        box.appendChild(d);
+      }
+    }
+
+    function setStatus(ok, text){
+      const s = document.getElementById('status');
+      s.className = 'status ' + (ok ? 'ok' : 'wait');
+      s.textContent = text || (ok ? TXT.status_ok : TXT.status_wait);
+    }
+
+    function checkCode(){
+      fetch('/api/get_code/{{ api_key }}')
+        .then(r => r.json())
+        .then(d => {
+          if(d.success){
+            if(d.code && d.code !== codeValue){
+              codeValue = d.code;
+              renderDigits(codeValue);
+              document.getElementById('code-wrap').style.display = 'flex';
+              document.getElementById('meta').style.display = 'block';
+              document.getElementById('meta').textContent = '接收时间：' + new Date(d.received_at).toLocaleString();
+              setStatus(true);
+            }
+          }else{
+            setStatus(false);
+          }
+        }).catch(()=>{});
+    }
+
+    function startPolling(){
+      if(pollingTimer) clearInterval(pollingTimer);
+      if(stopTimer) clearTimeout(stopTimer);
+      checkCode();
+      pollingTimer = setInterval(checkCode, 3000);
+      stopTimer = setTimeout(()=>{ clearInterval(pollingTimer); }, 300000);
+    }
+
+    // 刷新：清历史未用验证码，并仅回扫2分钟内（120秒）的历史
+    document.getElementById('refresh-btn').addEventListener('click', ()=>{
+      const s = document.getElementById('status');
+      s.className = 'status wait';
+      s.textContent = TXT.status_wait;
+      document.getElementById('code-wrap').style.display = 'none';
+      document.getElementById('meta').style.display = 'none';
+      document.getElementById('meta').textContent = '';
+      fetch('/api/start_watch/{{ api_key }}?fresh=1&window_sec=120', { method: 'POST' })
+        .then(()=>{ showToast(TXT.toast_refresh_ok); setTimeout(checkCode, 500); })
+        .catch(()=>{ showToast(TXT.toast_refresh_fail); });
+    });
+
+    // 复制手机号
+    (function(){
+      const btn = document.getElementById('copy-phone');
+      if (!btn) return;
+      btn.addEventListener('click', ()=>{
+        const el = document.querySelector('.phone .number');
+        const v = (el && (el.textContent || el.innerText || '')).trim();
+        copyTextUniversal(v);
+      });
+    })();
+
+    // 复制 2FA（如有）
+    (function(){
+      const btn = document.getElementById('copy-2fa');
+      if (!btn) return;
+      btn.addEventListener('click', ()=>{
+        const el = document.getElementById('twofa-text');
+        const v = (el && (el.textContent || el.innerText || '')).trim();
+        copyTextUniversal(v);
+      });
+    })();
+
+    // 复制验证码
+    (function(){
+      const btn = document.getElementById('copy-code');
+      if (!btn) return;
+      btn.addEventListener('click', ()=>{
+        const v = (typeof window.codeValue !== 'undefined' ? window.codeValue : '') || '';
+        copyTextUniversal(v);
+      });
+    })();
+
+    startPolling();
+  </script>
+</body>
+</html>'''
+    return render_template_string(
+        template,
+        phone=phone,
+        api_key=api_key,
+        two_fa_password=two_fa_password,
+        txt=txt,
+        txt_json=txt_json,
+        page_title=page_title
+    )
 # ================================
 # 增强版机器人
 # ================================
@@ -4227,7 +4965,6 @@ class EnhancedBot:
 
 <b>🌐 验证码接收</b>
 • 每个账号生成独立网页链接
-• 类似PVBOT的接收界面
 • 自动刷新显示最新验证码
 • 5分钟自动过期保护
 
@@ -4276,7 +5013,6 @@ class EnhancedBot:
 
 <b>🌐 验证码接收特性</b>
 • 每个账号生成独立验证链接
-• 类似PVBOT的美观界面设计
 • 实时显示验证码，自动刷新
 • 支持HTTP API调用获取验证码
 • 5分钟自动过期保护
@@ -5781,9 +6517,9 @@ class EnhancedBot:
             summary_text = (
                 "🎉 <b>API格式转换完成！</b>\n\n"
                 f"📊 成功: {len(api_accounts)} 个账号\n"
-                f"🌐 链接基址: {config.BASE_URL}\n"
+               # f"🌐 链接基址: {config.BASE_URL}\n"
                 f"⏱️ 用时: {int(elapsed_time)} 秒\n\n"
-                "📄 正在发送 TXT（手机号 + 验证码网页链接）..."
+                "📄 正在发送 TXT..."
             )
             try:
                 progress_msg.edit_text(summary_text, parse_mode='HTML')
@@ -5794,7 +6530,7 @@ class EnhancedBot:
                 if os.path.exists(file_path):
                     try:
                         with open(file_path, 'rb') as f:
-                            caption = "📋 验证码网页链接列表（手机号 + 链接）"
+                            caption = "📋 API链接（手机号 + 链接）"
                             context.bot.send_document(
                                 chat_id=update.effective_chat.id,
                                 document=f,
@@ -5810,7 +6546,7 @@ class EnhancedBot:
             # 完成提示
             self.safe_send_message(
                 update,
-                "✅ 已发送TXT文件。\n如外网打不开链接，请检查 BASE_URL 设置和服务器 5000 端口放行。"
+                "✅ 已发送TXT文件。\n"
             )
 
         except Exception as e:
@@ -5821,8 +6557,8 @@ class EnhancedBot:
                 pass
         finally:
             # 清理
-            if extract_dir and os.path.exists(extract_dir):
-                shutil.rmtree(extract_dir, ignore_errors=True)
+#            if extract_dir and os.path.exists(extract_dir):
+#                shutil.rmtree(extract_dir, ignore_errors=True)
             if temp_zip and os.path.exists(temp_zip):
                 try:
                     shutil.rmtree(os.path.dirname(temp_zip), ignore_errors=True)
