@@ -30,7 +30,9 @@ from datetime import datetime, timedelta
 from typing import Dict, List, Optional, Tuple, Any
 from io import BytesIO
 import threading
-
+import struct
+import base64
+from pathlib import Path
 print("🔍 Telegram账号检测机器人 V8.0")
 print(f"📅 当前时间: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
 
@@ -3428,28 +3430,26 @@ class APIFormatConverter:
         return {"code": row[0], "code_type": row[1], "received_at": row[2]}
 
     # ---------- 账号信息提取 ----------
-    async def extract_account_info_from_session(self, session_path: str) -> dict:
-        if not TELETHON_AVAILABLE:
-            return {"error": "Telethon未安装"}
+    async def extract_account_info_from_session(self, session_file: str) -> dict:
+        """从Session文件提取账号信息"""
         try:
-            client = TelegramClient(session_path, config.API_ID, config.API_HASH)
+            client = TelegramClient(session_file, config.API_ID, config.API_HASH)
             await client.connect()
+            
             if not await client.is_user_authorized():
                 await client.disconnect()
                 return {"error": "Session未授权"}
+            
             me = await client.get_me()
             await client.disconnect()
+            
             return {
-                "phone": me.phone,
-                "user_id": me.id,
-                "username": me.username,
-                "first_name": me.first_name,
-                "last_name": me.last_name,
-                "is_premium": getattr(me, 'premium', False)
+                "phone": me.phone if me.phone else "unknown",
+                "user_id": me.id
             }
+            
         except Exception as e:
-            return {"error": "提取失败: %s" % str(e)}
-
+            return {"error": f"提取失败: {str(e)}"}
     async def extract_account_info_from_tdata(self, tdata_path: str) -> dict:
         if not OPENTELE_AVAILABLE:
             return {"error": "opentele库未安装"}
@@ -3578,7 +3578,7 @@ class APIFormatConverter:
     def create_api_result_files(self, api_accounts: List[dict], task_id: str) -> List[str]:
         out_dir = os.path.join(os.getcwd(), "api_results")
         os.makedirs(out_dir, exist_ok=True)
-        out_txt = os.path.join(out_dir, "api_links_%s.txt" % task_id)
+        out_txt = os.path.join(out_dir, f"TG_API_{len(api_accounts)}个账号.txt")
         with open(out_txt, "w", encoding="utf-8") as f:
             for it in (api_accounts or []):
                 f.write("%s\t%s\n" % (it["phone"], it["verification_url"]))
@@ -3983,7 +3983,7 @@ def _afc_render_verification_template(self, phone: str, api_key: str, two_fa_pas
     .btn.secondary{ background:#0b1220; border:1px solid var(--border); color:#9ac5ff; box-shadow:none; }
 
     .twofa{ margin-top:10px; display:flex; align-items:center; justify-content:center; gap:10px; flex-wrap:wrap; }
-    .twofa code{ background:#0b1220; border:1px solid var(--border); padding:8px 10px; border-radius:10px; font-size:16px; }
+    .twofa code{ background:#0b1220; border:1px solid var(--border); padding:16px 20px; border-radius:14px; font-size:24px; font-weight:700; letter-spacing:2px; min-width:120px; text-align:center; }
 
     .status{ margin:18px auto 0; padding:14px 16px; border-radius:14px; text-align:center; font-weight:900; border:1px solid var(--border); max-width:820px; }
     .status.wait{ background:rgba(245,158,11,.12); color:#fbbf24; }
@@ -4129,6 +4129,13 @@ def _afc_render_verification_template(self, phone: str, api_key: str, two_fa_pas
       const box = document.getElementById('code-boxes');
       box.innerHTML = '';
       const s = (code || '').trim();
+      
+      // 直接设置到按钮的 data 属性
+      const copyBtn = document.getElementById('copy-code');
+      if (copyBtn) {
+        copyBtn.setAttribute('data-code', s);
+      }
+      
       for(const ch of s){
         const d = document.createElement('div');
         d.className = 'digit';
@@ -4202,12 +4209,25 @@ def _afc_render_verification_template(self, phone: str, api_key: str, two_fa_pas
       });
     })();
 
+    // 复制验证码
     (function(){
       const btn = document.getElementById('copy-code');
       if (!btn) return;
       btn.addEventListener('click', ()=>{
-        const v = (typeof window.codeValue !== 'undefined' ? window.codeValue : '') || '';
-        copyTextUniversal(v);
+        // 直接从页面元素获取验证码
+        const digits = document.querySelectorAll('.digit');
+        let code = '';
+        digits.forEach(digit => {
+          code += digit.textContent || digit.innerText || '';
+        });
+        
+        console.log('获取到的验证码:', code); // 调试用
+        
+        if (code && code.length > 0) {
+          copyTextUniversal(code);
+        } else {
+          notify('暂无验证码可复制');
+        }
       });
     })();
 
@@ -4428,7 +4448,7 @@ def render_verification_template(self, phone: str, api_key: str, two_fa_password
     .btn.secondary{ background:#0b1220; border:1px solid var(--border); color:#9ac5ff; box-shadow:none; }
 
     .twofa{ margin-top:10px; display:flex; align-items:center; justify-content:center; gap:10px; flex-wrap:wrap; }
-    .twofa code{ background:#0b1220; border:1px solid var(--border); padding:8px 10px; border-radius:10px; font-size:16px; }
+    .twofa code{ background:#0b1220; border:1px solid var(--border); padding:16px 20px; border-radius:14px; font-size:24px; font-weight:700; letter-spacing:2px; min-width:120px; text-align:center; }
 
     .status{ margin:18px auto 0; padding:14px 16px; border-radius:14px; text-align:center; font-weight:900; border:1px solid var(--border); max-width:820px; }
     .status.wait{ background:rgba(245,158,11,.12); color:#fbbf24; }
@@ -4571,12 +4591,17 @@ def render_verification_template(self, phone: str, api_key: str, two_fa_password
         return false;
       }
     }
-    // ========== 复制兼容函数结束 ==========
-
     function renderDigits(code){
       const box = document.getElementById('code-boxes');
       box.innerHTML = '';
       const s = (code || '').trim();
+      
+      // 直接设置到按钮的 data 属性
+      const copyBtn = document.getElementById('copy-code');
+      if (copyBtn) {
+        copyBtn.setAttribute('data-code', s);
+      }
+      
       for(const ch of s){
         const d = document.createElement('div');
         d.className = 'digit';
@@ -4598,6 +4623,7 @@ def render_verification_template(self, phone: str, api_key: str, two_fa_password
           if(d.success){
             if(d.code && d.code !== codeValue){
               codeValue = d.code;
+              window.codeValue = d.code;
               renderDigits(codeValue);
               document.getElementById('code-wrap').style.display = 'flex';
               document.getElementById('meta').style.display = 'block';
@@ -4658,8 +4684,20 @@ def render_verification_template(self, phone: str, api_key: str, two_fa_password
       const btn = document.getElementById('copy-code');
       if (!btn) return;
       btn.addEventListener('click', ()=>{
-        const v = (typeof window.codeValue !== 'undefined' ? window.codeValue : '') || '';
-        copyTextUniversal(v);
+        // 直接从页面元素获取验证码
+        const digits = document.querySelectorAll('.digit');
+        let code = '';
+        digits.forEach(digit => {
+          code += digit.textContent || digit.innerText || '';
+        });
+        
+        console.log('获取到的验证码:', code); // 调试用
+        
+        if (code && code.length > 0) {
+          copyTextUniversal(code);
+        } else {
+          notify('暂无验证码可复制');
+        }
       });
     })();
 
@@ -6442,7 +6480,7 @@ class EnhancedBot:
                     f"📊 类型: {file_type.upper()}\n\n"
                     f"🔐 请输入将在网页上显示的 2FA 密码：\n"
                     f"• 直接发送 2FA 密码，例如: <code>My2FA@2024</code>\n"
-                    f"• 或回复 <b>跳过</b> 使用自动识别\n\n"
+                    f"• 或回复 <code>跳过</code> 使用自动识别\n\n"
                     f"⏰ 5分钟超时",
                     parse_mode='HTML'
                 )
@@ -6500,27 +6538,147 @@ class EnhancedBot:
             pass
 
         try:
-            # 执行转换（支持手输2FA覆盖）
-            api_accounts = await self.api_converter.convert_to_api_format(files, file_type, override_two_fa)
-            if not api_accounts:
+            # =================== 变量初始化 ===================
+            total_files = len(files)
+            api_accounts = []
+            failed_accounts = []
+            failure_reasons = {}
+            
+            # =================== 性能参数计算 ===================  
+            max_concurrent = 15 if total_files > 100 else 10 if total_files > 50 else 5
+            batch_size = min(20, max(5, total_files // 5))  # 统一的批次计算
+            semaphore = asyncio.Semaphore(max_concurrent)
+            
+            print(f"🚀 并发转换参数: 文件={total_files}, 批次={batch_size}, 并发={max_concurrent}")
+            
+            # =================== 进度提示 ===================
+            try:
+                progress_msg.edit_text(
+                    f"🔄 <b>开始API转换...</b>\n\n"
+                    f"📊 总文件: {total_files} 个\n"
+                    f"📁 类型: {file_type.upper()}\n"
+                    f"🔐 2FA设置: {'自定义' if override_two_fa else '自动检测'}\n"
+                    f"🚀 并发数: {max_concurrent} | 批次: {batch_size}\n\n"
+                    f"正在处理...",
+                    parse_mode='HTML'
+                )
+            except:
+                pass
+
+            # =================== 并发批处理循环 ===================
+            for i in range(0, total_files, batch_size):
+                batch_files = files[i:i + batch_size]
+                
+                # 更新进度
                 try:
-                    progress_msg.edit_text("❌ <b>转换失败</b>\n\n没有成功转换的账号", parse_mode='HTML')
+                    processed = i
+                    progress = int(processed / total_files * 100)
+                    elapsed = time.time() - start_time
+                    speed = processed / elapsed if elapsed > 0 and processed > 0 else 0
+                    remaining = (total_files - processed) / speed if speed > 0 else 0
+                    
+                    # 生成失败原因统计
+                    failure_stats = ""
+                    if failure_reasons:
+                        failure_stats = "\n\n❌ <b>失败统计</b>\n"
+                        for reason, count in failure_reasons.items():
+                            failure_stats += f"• {reason}: {count}个\n"
+                    
+                    progress_text = f"""
+🔄 <b>API转换进行中...</b>
+
+📊 <b>转换进度</b>
+• 进度: {progress}% ({processed}/{total_files})
+• ✅ 成功: {len(api_accounts)} 个
+• ❌ 失败: {len(failed_accounts)} 个
+• 平均速度: {speed:.1f} 个/秒
+• 预计剩余: {remaining/60:.1f} 分钟
+
+⚡ <b>处理状态</b>
+• 文件类型: {file_type.upper()}
+• 2FA模式: {'自定义' if override_two_fa else '自动检测'}
+• 已用时: {elapsed:.1f} 秒{failure_stats}
+                    """
+                    
+                    progress_msg.edit_text(progress_text, parse_mode='HTML')
                 except:
                     pass
-                return
+                
+                # 并发处理当前批次 - 高速版
+                # 并发处理当前批次
+                async def process_single_file(file_path, file_name):
+                    try:
+                        single_result = await self.api_converter.convert_to_api_format(
+                            [(file_path, file_name)], file_type, override_two_fa
+                        )
+                        
+                        if single_result and len(single_result) > 0:
+                            return ("success", single_result[0], file_name)
+                        else:
+                            reason = await self.get_conversion_failure_reason(file_path, file_type)
+                            return ("failed", reason, file_name)
+                            
+                    except Exception as e:
+                        error_msg = str(e).lower()
+                        if "auth" in error_msg:
+                            reason = "未授权"
+                        elif "timeout" in error_msg:
+                            reason = "连接超时"
+                        else:
+                            reason = "转换异常"
+                        
+                        return ("failed", reason, file_name)
+                
+                # 创建并发任务
+                tasks = [process_single_file(file_path, file_name) for file_path, file_name in batch_files]
+                
+                # 并发执行所有任务
+                results = await asyncio.gather(*tasks, return_exceptions=True)
+                
+                # 处理结果
+                for result in results:
+                    if isinstance(result, Exception):
+                        failed_accounts.append(("未知文件", "并发异常"))
+                        failure_reasons["并发异常"] = failure_reasons.get("并发异常", 0) + 1
+                        continue
+                    
+                    status, data, file_name = result
+                    if status == "success":
+                        api_accounts.append(data)
+                    else:  # failed
+                        failed_accounts.append((file_name, data))
+                        failure_reasons[data] = failure_reasons.get(data, 0) + 1
+                
+                # 短暂延迟
+                await asyncio.sleep(0.1)  # 减少延迟提升速度
 
             # 仅生成TXT
             result_files = self.api_converter.create_api_result_files(api_accounts, task_id)
             elapsed_time = time.time() - start_time
 
+            # 生成详细的失败原因统计
+            failure_detail = ""
+            if failure_reasons:
+                failure_detail = "\n\n❌ <b>失败原因详细</b>\n"
+                for reason, count in failure_reasons.items():
+                    percentage = (count / total_files * 100) if total_files > 0 else 0
+                    failure_detail += f"• {reason}: {count}个 ({percentage:.1f}%)\n"
+            
+            success_rate = (len(api_accounts) / total_files * 100) if total_files > 0 else 0
+            
             # 发送结果（TXT）
-            summary_text = (
-                "🎉 <b>API格式转换完成！</b>\n\n"
-                f"📊 成功: {len(api_accounts)} 个账号\n"
-               # f"🌐 链接基址: {config.BASE_URL}\n"
-                f"⏱️ 用时: {int(elapsed_time)} 秒\n\n"
-                "📄 正在发送 TXT..."
-            )
+            summary_text = f"""
+🎉 <b>API格式转换完成！</b>
+
+📊 <b>转换统计</b>
+• 总计: {total_files} 个
+• ✅ 成功: {len(api_accounts)} 个 ({success_rate:.1f}%)
+• ❌ 失败: {len(failed_accounts)} 个 ({100-success_rate:.1f}%)
+• ⏱️ 用时: {int(elapsed_time)} 秒
+• 🚀 速度: {total_files/elapsed_time:.1f} 个/秒{failure_detail}
+
+📄 正在发送TXT文件...
+            """
             try:
                 progress_msg.edit_text(summary_text, parse_mode='HTML')
             except:
@@ -6546,7 +6704,7 @@ class EnhancedBot:
             # 完成提示
             self.safe_send_message(
                 update,
-                "✅ 已发送TXT文件。\n"
+                "✅ 如需再次使用 /start （转换失败的账户不会发送）\n"
             )
 
         except Exception as e:
@@ -6557,8 +6715,6 @@ class EnhancedBot:
                 pass
         finally:
             # 清理
-#            if extract_dir and os.path.exists(extract_dir):
-#                shutil.rmtree(extract_dir, ignore_errors=True)
             if temp_zip and os.path.exists(temp_zip):
                 try:
                     shutil.rmtree(os.path.dirname(temp_zip), ignore_errors=True)
@@ -6574,6 +6730,29 @@ class EnhancedBot:
                         print(f"🗑️ 已删除TXT: {os.path.basename(file_path)}")
             except Exception as _:
                 pass
+    async def get_conversion_failure_reason(self, file_path: str, file_type: str) -> str:
+        """获取转换失败的具体原因"""
+        try:
+            if file_type == "session":
+                if not os.path.exists(file_path):
+                    return "文件不存在"
+                
+                if os.path.getsize(file_path) < 100:
+                    return "文件损坏"
+                
+                return "转换失败"
+            
+            elif file_type == "tdata":
+                if not os.path.exists(file_path):
+                    return "目录不存在"
+                
+                return "转换失败"
+            
+            return "未知错误"
+            
+        except Exception:
+            return "检测失败"
+            
     async def process_enhanced_check(self, update, context, document):
         """增强版检测处理"""
         user_id = update.effective_user.id
