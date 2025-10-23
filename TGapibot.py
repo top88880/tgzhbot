@@ -11050,16 +11050,16 @@ class EnhancedBot:
 <b>🧩 账户文件合并</b>
 
 <b>💡 功能说明</b>
-• 自动识别 TData ZIP 文件
-• 自动配对 Session + JSON 文件
+• 自动解压所有 ZIP 文件
+• 递归扫描识别 TData 账户
+• 递归扫描识别 Session + JSON 配对
 • 智能分类归档
 
-<b>📤 请上传文件</b>
+<b>📤 请上传 ZIP 文件</b>
 
-支持的文件类型：
-• .zip (TData格式)
-• .session (Session文件)
-• .json (配置文件)
+<b>⚠️ 仅接受 .zip 文件</b>
+• 可上传多个 ZIP 文件
+• 系统会自动解压并扫描内容
 
 上传完成后点击"✅ 完成合并"
         """
@@ -11072,7 +11072,7 @@ class EnhancedBot:
         self.safe_edit_message(query, text, 'HTML', keyboard)
     
     def handle_merge_file_upload(self, update: Update, context: CallbackContext, document):
-        """处理合并文件上传"""
+        """处理合并文件上传 - 仅接受ZIP文件"""
         user_id = update.effective_user.id
         
         if user_id not in self.pending_merge:
@@ -11082,9 +11082,9 @@ class EnhancedBot:
         task = self.pending_merge[user_id]
         filename = document.file_name
         
-        # 检查文件类型
-        if not (filename.endswith('.zip') or filename.endswith('.session') or filename.endswith('.json')):
-            self.safe_send_message(update, "❌ 不支持的文件类型，请上传 .zip、.session 或 .json 文件")
+        # 检查文件类型 - 仅接受ZIP文件
+        if not filename.lower().endswith('.zip'):
+            self.safe_send_message(update, "❌ 仅支持 .zip 文件，请重新上传")
             return
         
         # 下载文件
@@ -11096,7 +11096,7 @@ class EnhancedBot:
             total_files = len(task['files'])
             self.safe_send_message(
                 update,
-                f"✅ <b>已接收文件 {total_files}</b>\n\n"
+                f"✅ <b>已接收 ZIP 文件 {total_files}</b>\n\n"
                 f"文件名: <code>{filename}</code>\n\n"
                 "继续上传或点击 \"✅ 完成合并\"",
                 'HTML'
@@ -11129,7 +11129,7 @@ class EnhancedBot:
         thread.start()
     
     async def process_merge_files(self, update, context, user_id: int):
-        """处理账户文件合并"""
+        """处理账户文件合并 - 解压所有ZIP并递归扫描"""
         if user_id not in self.pending_merge:
             return
         
@@ -11137,97 +11137,117 @@ class EnhancedBot:
         temp_dir = task['temp_dir']
         files = task['files']
         
-        # 分类存储
-        tdata_zips = []
-        session_files = []
-        json_files = []
-        other_files = []
+        # 创建解压工作目录
+        extract_dir = os.path.join(temp_dir, 'extracted')
+        os.makedirs(extract_dir, exist_ok=True)
         
-        # 分类文件
+        # 第一步：解压所有ZIP文件
         for filename in files:
             file_path = os.path.join(temp_dir, filename)
-            
-            if filename.endswith('.zip'):
-                # 检查是否是 TData ZIP
-                if self.is_tdata_zip(file_path):
-                    tdata_zips.append(filename)
-                else:
-                    other_files.append(filename)
-            elif filename.endswith('.session'):
-                session_files.append(filename)
-            elif filename.endswith('.json'):
-                json_files.append(filename)
-            else:
-                other_files.append(filename)
+            if filename.lower().endswith('.zip'):
+                try:
+                    # 为每个ZIP创建单独的子目录
+                    zip_extract_dir = os.path.join(extract_dir, filename.replace('.zip', ''))
+                    os.makedirs(zip_extract_dir, exist_ok=True)
+                    
+                    with zipfile.ZipFile(file_path, 'r') as zf:
+                        zf.extractall(zip_extract_dir)
+                except Exception as e:
+                    print(f"❌ 解压失败 {filename}: {e}")
         
-        # 配对 session 和 json 文件
-        paired_files = []
-        unpaired_session = []
-        unpaired_json = []
+        # 第二步：递归扫描所有解压后的内容
+        tdata_accounts = []  # 存储 TData 账户目录路径
+        session_json_pairs = []  # 存储 Session+JSON 配对
         
-        session_basenames = {f.replace('.session', ''): f for f in session_files}
-        json_basenames = {f.replace('.json', ''): f for f in json_files}
+        # 递归扫描函数
+        def scan_directory(dir_path):
+            """递归扫描目录寻找账户"""
+            try:
+                for root, dirs, filenames in os.walk(dir_path):
+                    # 检查是否是 TData 账户目录（case-insensitive）
+                    dirs_lower = [d.lower() for d in dirs]
+                    if 'tdata' in dirs_lower:
+                        # 找到 tdata 目录的实际名称
+                        tdata_dir_name = dirs[dirs_lower.index('tdata')]
+                        tdata_path = os.path.join(root, tdata_dir_name)
+                        
+                        # 检查是否包含 D877F783D5D3EF8C 标记
+                        if os.path.exists(tdata_path):
+                            for subdir in os.listdir(tdata_path):
+                                if subdir.upper() == 'D877F783D5D3EF8C':
+                                    # 找到一个 TData 账户
+                                    tdata_accounts.append((root, tdata_dir_name))
+                                    break
+                    
+                    # 检查当前目录中的 Session + JSON 配对
+                    session_files = {}
+                    json_files = {}
+                    
+                    for fname in filenames:
+                        if fname.lower().endswith('.session'):
+                            basename = fname[:-8]  # 去掉 .session
+                            session_files[basename] = os.path.join(root, fname)
+                        elif fname.lower().endswith('.json'):
+                            basename = fname[:-5]  # 去掉 .json
+                            json_files[basename] = os.path.join(root, fname)
+                    
+                    # 找出配对的 session 和 json
+                    for basename in session_files.keys():
+                        if basename in json_files:
+                            session_json_pairs.append((session_files[basename], json_files[basename], basename))
+            except Exception as e:
+                print(f"❌ 扫描目录失败 {dir_path}: {e}")
         
-        # 找出配对的文件
-        for basename in session_basenames.keys():
-            if basename in json_basenames:
-                paired_files.append((session_basenames[basename], json_basenames[basename]))
-            else:
-                unpaired_session.append(session_basenames[basename])
+        # 扫描所有解压的内容
+        scan_directory(extract_dir)
         
-        # 找出未配对的 json
-        for basename in json_basenames.keys():
-            if basename not in session_basenames:
-                unpaired_json.append(json_basenames[basename])
-        
-        # 创建输出 ZIP 文件
+        # 第三步：创建输出 ZIP 文件
         result_dir = os.path.join(temp_dir, 'results')
         os.makedirs(result_dir, exist_ok=True)
         
         timestamp = int(time.time())
         zip_files_created = []
         
-        # 打包 TData ZIP
-        if tdata_zips:
-            tdata_zip_path = os.path.join(result_dir, f'tdata_only_{timestamp}.zip')
-            with zipfile.ZipFile(tdata_zip_path, 'w') as zf:
-                for filename in tdata_zips:
-                    file_path = os.path.join(temp_dir, filename)
-                    zf.write(file_path, filename)
-            zip_files_created.append(('TData 文件', tdata_zip_path, len(tdata_zips)))
+        # 打包 TData 账户（规范化结构）
+        if tdata_accounts:
+            tdata_zip_path = os.path.join(result_dir, f'tdata_accounts_{timestamp}.zip')
+            with zipfile.ZipFile(tdata_zip_path, 'w', zipfile.ZIP_DEFLATED) as zf:
+                for idx, (account_root, tdata_dir_name) in enumerate(tdata_accounts, 1):
+                    # 规范化：每个账户存储为 account_N/tdata/...
+                    account_name = f'account_{idx}'
+                    tdata_full_path = os.path.join(account_root, tdata_dir_name)
+                    
+                    # 递归添加 tdata 目录下的所有文件
+                    for root, dirs, filenames in os.walk(tdata_full_path):
+                        for fname in filenames:
+                            file_path = os.path.join(root, fname)
+                            # 计算相对路径
+                            rel_path = os.path.relpath(file_path, account_root)
+                            # 规范化为 account_N/tdata/...
+                            arcname = os.path.join(account_name, rel_path)
+                            zf.write(file_path, arcname)
+            
+            zip_files_created.append(('TData 账户', tdata_zip_path, len(tdata_accounts)))
         
-        # 打包配对的 session + json
-        if paired_files:
+        # 打包 Session+JSON 配对
+        if session_json_pairs:
             session_json_zip_path = os.path.join(result_dir, f'session_json_pairs_{timestamp}.zip')
-            with zipfile.ZipFile(session_json_zip_path, 'w') as zf:
-                for session_file, json_file in paired_files:
-                    session_path = os.path.join(temp_dir, session_file)
-                    json_path = os.path.join(temp_dir, json_file)
-                    zf.write(session_path, session_file)
-                    zf.write(json_path, json_file)
-            zip_files_created.append(('Session+JSON 配对', session_json_zip_path, len(paired_files)))
-        
-        # 打包未配对/其他文件
-        incomplete_files = unpaired_session + unpaired_json + other_files
-        if incomplete_files:
-            incomplete_zip_path = os.path.join(result_dir, f'incomplete_{timestamp}.zip')
-            with zipfile.ZipFile(incomplete_zip_path, 'w') as zf:
-                for filename in incomplete_files:
-                    file_path = os.path.join(temp_dir, filename)
-                    if os.path.exists(file_path):
-                        zf.write(file_path, filename)
-            zip_files_created.append(('未配对/其他', incomplete_zip_path, len(incomplete_files)))
+            with zipfile.ZipFile(session_json_zip_path, 'w', zipfile.ZIP_DEFLATED) as zf:
+                for session_path, json_path, basename in session_json_pairs:
+                    # 使用原始文件名
+                    zf.write(session_path, os.path.basename(session_path))
+                    zf.write(json_path, os.path.basename(json_path))
+            
+            zip_files_created.append(('Session+JSON 配对', session_json_zip_path, len(session_json_pairs)))
         
         # 发送结果
         summary = f"""
 ✅ <b>账户文件合并完成！</b>
 
 <b>📊 处理结果</b>
-• TData ZIP: {len(tdata_zips)} 个
-• Session+JSON 配对: {len(paired_files)} 对
-• 未配对 Session: {len(unpaired_session)} 个
-• 未配对 JSON: {len(unpaired_json)} 个
-• 其他文件: {len(other_files)} 个
+• 解压 ZIP 文件: {len(files)} 个
+• TData 账户: {len(tdata_accounts)} 个
+• Session+JSON 配对: {len(session_json_pairs)} 对
 
 <b>📦 生成文件</b>
         """
@@ -11249,13 +11269,13 @@ class EnhancedBot:
         self.cleanup_merge_task(user_id)
     
     def is_tdata_zip(self, zip_path: str) -> bool:
-        """检测 ZIP 文件是否包含 TData 标识"""
+        """检测 ZIP 文件是否包含 TData 标识（case-insensitive）"""
         try:
             with zipfile.ZipFile(zip_path, 'r') as zf:
-                # 检查是否包含 D877F783D5D3EF8C 目录
+                # 检查是否包含 D877F783D5D3EF8C 目录（case-insensitive）
                 namelist = zf.namelist()
                 for name in namelist:
-                    if 'D877F783D5D3EF8C' in name:
+                    if 'D877F783D5D3EF8C'.lower() in name.lower():
                         return True
             return False
         except:
