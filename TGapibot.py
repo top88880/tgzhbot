@@ -6181,7 +6181,7 @@ class EnhancedBot:
             self.handle_admin_manual_menu(query)
         elif data.startswith("admin_manual_days_"):
             days = int(data.split("_")[-1])
-            self.handle_admin_manual_grant(query, update, days)
+            self.handle_admin_manual_grant(query, context, days)
         # 广播消息回调
         elif data.startswith("broadcast_"):
             self.handle_broadcast_callbacks(update, context, query, data)
@@ -9277,7 +9277,7 @@ class EnhancedBot:
         
         self.safe_send_message(update, text, 'HTML', keyboard)
     
-    def handle_admin_manual_grant(self, query, update, days: int):
+    def handle_admin_manual_grant(self, query, context, days: int):
         """管理员执行人工开通"""
         admin_id = query.from_user.id
         
@@ -9322,8 +9322,7 @@ class EnhancedBot:
             
             # 尝试通知用户
             try:
-                context = update._bot
-                context.send_message(
+                context.bot.send_message(
                     chat_id=target_user_id,
                     text=f"""
 🎉 <b>恭喜！您已获得会员</b>
