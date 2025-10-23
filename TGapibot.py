@@ -11098,7 +11098,7 @@ class EnhancedBot:
                 update,
                 f"✅ <b>已接收文件 {total_files}</b>\n\n"
                 f"文件名: <code>{filename}</code>\n\n"
-                f"继续上传或点击"✅ 完成合并"",
+                "继续上传或点击 \"✅ 完成合并\"",
                 'HTML'
             )
         except Exception as e:
