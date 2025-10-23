@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 """
 Telegram账号检测机器人 - V8.0
-管理用户列表完整版
+群发通知完整版
 """
 
 # 放在所有 import 附近（顶层，只执行一次）
@@ -1078,20 +1078,9 @@ class Database:
                 total INTEGER DEFAULT 0,
                 success INTEGER DEFAULT 0,
                 failed INTEGER DEFAULT 0,
-                duration_sec REAL DEFAULT 0,
-                media_type TEXT DEFAULT 'none',
-                media_ref TEXT DEFAULT ''
+                duration_sec REAL DEFAULT 0
             )
         """)
-        
-        # 迁移：为已存在的表添加media字段（如果不存在）
-        try:
-            c.execute("SELECT media_type FROM broadcasts LIMIT 1")
-        except sqlite3.OperationalError:
-            # 字段不存在，添加它们
-            c.execute("ALTER TABLE broadcasts ADD COLUMN media_type TEXT DEFAULT 'none'")
-            c.execute("ALTER TABLE broadcasts ADD COLUMN media_ref TEXT DEFAULT ''")
-            print("✅ 数据库迁移: 已添加media字段到broadcasts表")
         
         # 广播日志表
         c.execute("""
@@ -1531,8 +1520,7 @@ class Database:
             return []
     
     def insert_broadcast_record(self, title: str, content: str, buttons_json: str, 
-                               target: str, created_by: int, 
-                               media_type: str = 'none', media_ref: str = '') -> Optional[int]:
+                               target: str, created_by: int) -> Optional[int]:
         """插入广播记录并返回ID"""
         try:
             conn = sqlite3.connect(self.db_name)
@@ -1541,9 +1529,9 @@ class Database:
             
             c.execute("""
                 INSERT INTO broadcasts 
-                (title, content, buttons_json, target, created_by, created_at, status, media_type, media_ref)
-                VALUES (?, ?, ?, ?, ?, ?, 'pending', ?, ?)
-            """, (title, content, buttons_json, target, created_by, now, media_type, media_ref))
+                (title, content, buttons_json, target, created_by, created_at, status)
+                VALUES (?, ?, ?, ?, ?, ?, 'pending')
+            """, (title, content, buttons_json, target, created_by, now))
             
             broadcast_id = c.lastrowid
             conn.commit()
@@ -1622,8 +1610,7 @@ class Database:
             
             c.execute("""
                 SELECT id, title, content, buttons_json, target, created_by, 
-                       created_at, status, total, success, failed, duration_sec,
-                       media_type, media_ref
+                       created_at, status, total, success, failed, duration_sec
                 FROM broadcasts 
                 WHERE id = ?
             """, (broadcast_id,))
@@ -1645,9 +1632,7 @@ class Database:
                 'total': row[8],
                 'success': row[9],
                 'failed': row[10],
-                'duration_sec': row[11],
-                'media_type': row[12] if len(row) > 12 else 'none',
-                'media_ref': row[13] if len(row) > 13 else ''
+                'duration_sec': row[11]
             }
             
             conn.close()
@@ -4721,7 +4706,6 @@ class EnhancedBot:
 
         # 通用回调处理（需放在特定回调之后）
         self.dp.add_handler(CallbackQueryHandler(self.handle_callbacks))
-        self.dp.add_handler(MessageHandler(Filters.photo, self.handle_photo))
         self.dp.add_handler(MessageHandler(Filters.document, self.handle_file))
         # 新增：广播媒体上传处理
         self.dp.add_handler(MessageHandler(Filters.photo, self.handle_photo))
@@ -6695,118 +6679,10 @@ class EnhancedBot:
         # 直接调用刷新代理面板
         self.refresh_proxy_panel(query)
 
-    def handle_photo(self, update: Update, context: CallbackContext):
-        """处理照片上传（用于广播媒体）"""
-        user_id = update.effective_user.id
-        
-        # 检查是否在等待广播媒体
-        try:
-            conn = sqlite3.connect(config.DB_NAME)
-            c = conn.cursor()
-            c.execute("SELECT status FROM users WHERE user_id = ?", (user_id,))
-            row = c.fetchone()
-            conn.close()
-            
-            if row and row[0] == "waiting_broadcast_media":
-                # 处理广播媒体上传
-                if user_id not in self.pending_broadcasts:
-                    self.safe_send_message(update, "❌ 会话已过期，请重新开始")
-                    return
-                
-                task = self.pending_broadcasts[user_id]
-                
-                # 检查超时
-                if time.time() - task['started_at'] > 300:
-                    del self.pending_broadcasts[user_id]
-                    self.db.save_user(user_id, "", "", "")
-                    self.safe_send_message(update, "❌ 操作超时，请重新开始")
-                    return
-                
-                # 获取最大尺寸的照片file_id
-                photos = update.message.photo
-                if photos:
-                    largest_photo = max(photos, key=lambda p: p.file_size or 0)
-                    photo_file_id = largest_photo.file_id
-                    
-                    # 保存到任务
-                    task['media_type'] = 'photo'
-                    task['photo_file_id'] = photo_file_id
-                    task['step'] = 'dashboard'
-                    self.db.save_user(user_id, "", "", "")
-                    
-                    self.safe_send_message(update, "✅ 图片已保存，返回仪表板...")
-                    self.send_dashboard_message(update, user_id)
-                else:
-                    self.safe_send_message(update, "❌ 未检测到图片，请重试")
-                return
-        except Exception as e:
-            print(f"❌ 处理照片失败: {e}")
-            import traceback
-            traceback.print_exc()
-    
     def handle_file(self, update: Update, context: CallbackContext):
         """处理文件上传"""
         user_id = update.effective_user.id
         document = update.message.document
-        
-        # 检查是否在等待广播媒体（支持image/*文档）
-        try:
-            conn = sqlite3.connect(config.DB_NAME)
-            c = conn.cursor()
-            c.execute("SELECT status FROM users WHERE user_id = ?", (user_id,))
-            row = c.fetchone()
-            user_status = row[0] if row else None
-            conn.close()
-            
-            if user_status == "waiting_broadcast_media":
-                # 处理以文档形式发送的图片
-                if document and document.mime_type and document.mime_type.startswith('image/'):
-                    if user_id not in self.pending_broadcasts:
-                        self.safe_send_message(update, "❌ 会话已过期，请重新开始")
-                        return
-                    
-                    task = self.pending_broadcasts[user_id]
-                    
-                    # 检查超时
-                    if time.time() - task['started_at'] > 300:
-                        del self.pending_broadcasts[user_id]
-                        self.db.save_user(user_id, "", "", "")
-                        self.safe_send_message(update, "❌ 操作超时，请重新开始")
-                        return
-                    
-                    # 下载文档，然后用send_photo发送以获取file_id
-                    try:
-                        file = document.get_file()
-                        file_bytes = file.download_as_bytearray()
-                        
-                        # 发送图片并获取file_id
-                        sent_msg = update.message.bot.send_photo(
-                            chat_id=user_id,
-                            photo=BytesIO(file_bytes),
-                            caption="✅ 已接收图片"
-                        )
-                        
-                        # 获取photo file_id
-                        if sent_msg.photo:
-                            largest_photo = max(sent_msg.photo, key=lambda p: p.file_size or 0)
-                            photo_file_id = largest_photo.file_id
-                            
-                            # 保存到任务
-                            task['media_type'] = 'photo'
-                            task['photo_file_id'] = photo_file_id
-                            task['step'] = 'dashboard'
-                            self.db.save_user(user_id, "", "", "")
-                            
-                            self.safe_send_message(update, "✅ 图片已保存，返回仪表板...")
-                            self.send_dashboard_message(update, user_id)
-                    except Exception as e:
-                        self.safe_send_message(update, f"❌ 处理图片失败: {str(e)}\n💡 请尝试直接发送图片而非文档")
-                    return
-                else:
-                    self.safe_send_message(update, "❌ 请发送图片格式的文件，或以\"图片\"方式发送")
-                    return
-        except Exception as e:
-            print(f"❌ 检查广播媒体状态失败: {e}")
 
         if not document or not document.file_name.lower().endswith('.zip'):
             self.safe_send_message(update, "❌ 请上传ZIP格式的压缩包")
@@ -8126,13 +8002,7 @@ class EnhancedBot:
                     self.handle_broadcast_content_input(update, context, user_id, text)
                     return
                 elif user_status == "waiting_broadcast_buttons":
-                    self.handle_broadcast_buttons_input_new(update, context, user_id, text)
-                    return
-                elif user_status == "waiting_broadcast_media":
-                    # 媒体输入通过photo/document handler处理
-                    pass
-                elif user_status == "waiting_broadcast_text":
-                    self.handle_broadcast_text_input(update, context, user_id, text)
+                    self.handle_broadcast_buttons_input(update, context, user_id, text)
                     return
         except Exception as e:
             print(f"❌ 检查广播状态失败: {e}")
@@ -8995,43 +8865,6 @@ class EnhancedBot:
             self.restart_broadcast_wizard(query, update, context)
         elif data == "broadcast_cancel":
             self.cancel_broadcast(query, user_id)
-        # 新的仪表板回调
-        elif data == "broadcast_media":
-            self.handle_broadcast_media_start(query, update, context, user_id)
-        elif data == "broadcast_media_view":
-            self.handle_broadcast_media_view(query, user_id)
-        elif data == "broadcast_media_clear":
-            self.handle_broadcast_media_clear(query, user_id)
-        elif data == "broadcast_media_label":
-            query.answer("点击右侧按钮操作")
-        elif data == "broadcast_text":
-            self.handle_broadcast_text_start(query, update, context, user_id)
-        elif data == "broadcast_text_view":
-            self.handle_broadcast_text_view(query, user_id)
-        elif data == "broadcast_text_label":
-            query.answer("点击右侧按钮操作")
-        elif data == "broadcast_buttons":
-            self.handle_broadcast_buttons_start(query, update, context, user_id)
-        elif data == "broadcast_buttons_view":
-            self.handle_broadcast_buttons_view(query, user_id)
-        elif data == "broadcast_buttons_clear":
-            self.handle_broadcast_buttons_clear(query, user_id)
-        elif data == "broadcast_buttons_label":
-            query.answer("点击右侧按钮操作")
-        elif data == "broadcast_preview":
-            self.handle_broadcast_preview(query, update, context, user_id)
-        elif data == "broadcast_back":
-            self.handle_broadcast_back(query, user_id)
-        elif data == "broadcast_next":
-            self.handle_broadcast_next(query, update, context, user_id)
-        elif data == "broadcast_dashboard":
-            # 返回仪表板
-            if user_id in self.pending_broadcasts:
-                self.db.save_user(user_id, "", "", "")
-                self.pending_broadcasts[user_id]['step'] = 'dashboard'
-                self.show_broadcast_dashboard(query, user_id)
-            else:
-                query.answer("会话已过期，请重新创建")
     
     def show_broadcast_menu(self, query):
         """显示广播菜单"""
@@ -9069,8 +8902,6 @@ class EnhancedBot:
     
     def handle_broadcast_media(self, query, update, context):
         """处理媒体设置"""
-    def start_broadcast_wizard(self, query, update, context):
-        """开始广播创建向导 - 显示中文两列仪表板"""
         user_id = query.from_user.id
         
         if user_id not in self.pending_broadcasts:
@@ -9187,124 +9018,12 @@ class EnhancedBot:
   <code>&lt;i&gt;斜体&lt;/i&gt;</code>
   <code>&lt;a href="URL"&gt;链接&lt;/a&gt;</code>
   <code>&lt;code&gt;代码&lt;/code&gt;</code>
-        # 初始化广播任务
-        self.pending_broadcasts[user_id] = {
-            'step': 'dashboard',
-            'started_at': time.time(),
-            'title': '',
-            'text_html': '',
-            'buttons': [],
-            'target': '',
-            'media_type': 'none',
-            'photo_file_id': '',
-            'preview_message_id': None,
-            'broadcast_id': None
-        }
-        
-        # 清除用户状态
-        self.db.save_user(user_id, "", "", "")
-        
-        # 显示仪表板
-        self.show_broadcast_dashboard(query, user_id)
-    
-    def show_broadcast_dashboard(self, query, user_id):
-        """显示中文两列广播仪表板"""
-        if user_id not in self.pending_broadcasts:
-            return
-        
-        task = self.pending_broadcasts[user_id]
-        
-        # 检查超时
-        if time.time() - task['started_at'] > 300:  # 5分钟
-            del self.pending_broadcasts[user_id]
-            self.db.save_user(user_id, "", "", "")
-            query.answer("❌ 操作超时，请重新开始")
-            self.safe_edit_message(query, "❌ 操作超时，请重新开始")
-            return
-        
-        # 媒体状态
-        if task.get('media_type') == 'photo' and task.get('photo_file_id'):
-            media_status = "媒体 ✅ 已添加"
-            media_view_text = "👀 查看"
-        else:
-            media_status = "媒体 ❗未设置"
-            media_view_text = "👀 查看"
-        
-        # 文本状态
-        if task.get('text_html', '').strip():
-            text_status = "文本 ✅ 已填写"
-            can_proceed = True
-        else:
-            text_status = "文本 ❗未填写"
-            can_proceed = False
-        
-        # 按钮状态
-        button_count = len(task.get('buttons', []))
-        if button_count > 0:
-            button_status = f"按钮 ✅ {button_count}个"
-        else:
-            button_status = "按钮 ❗未设置"
-        
-        # 构建消息文本
-        text = f"""<b>消息广播 · 指南</b>
 
-支持 单图+文本(HTML) 模式，自定义按钮，智能节流发送。
-
-<b>{media_status}</b>
-<b>{text_status}</b>
-<b>{button_status}</b>
-
-⏰ <i>5分钟内未操作将自动取消</i>"""
+⏰ <i>5分钟内未输入将自动取消</i>
+        """
         
         keyboard = InlineKeyboardMarkup([
             [InlineKeyboardButton("❌ 取消", callback_data="broadcast_cancel")]
-        # 构建两列按钮
-        keyboard = [
-            [
-                InlineKeyboardButton(media_status.split()[0], callback_data="broadcast_media_label"),
-                InlineKeyboardButton(media_view_text, callback_data="broadcast_media_view")
-            ],
-            [
-                InlineKeyboardButton(text_status.split()[0], callback_data="broadcast_text_label"),
-                InlineKeyboardButton("👀 查看", callback_data="broadcast_text_view")
-            ],
-            [
-                InlineKeyboardButton(button_status.split()[0], callback_data="broadcast_buttons_label"),
-                InlineKeyboardButton("👀 查看", callback_data="broadcast_buttons_view")
-            ],
-            [InlineKeyboardButton("📱 完整预览", callback_data="broadcast_preview")],
-            [
-                InlineKeyboardButton("🔙 返回", callback_data="broadcast_back"),
-                InlineKeyboardButton("➡️ 下一步", callback_data="broadcast_next")
-            ]
-        ]
-        
-        self.safe_edit_message(query, text, 'HTML', InlineKeyboardMarkup(keyboard))
-    
-    def handle_broadcast_media_start(self, query, update, context, user_id):
-        """开始媒体上传"""
-        query.answer()
-        if user_id not in self.pending_broadcasts:
-            return
-        
-        task = self.pending_broadcasts[user_id]
-        task['step'] = 'media'
-        self.db.save_user(user_id, "", "", "waiting_broadcast_media")
-        
-        text = """<b>📸 上传媒体（单图）</b>
-
-请发送一张图片：
-• 直接粘贴截图或从相册选择
-• 支持照片格式
-• 如发送为文档，需为 image/* MIME类型
-
-发送后返回仪表板。
-
-💡 <i>不想添加媒体？点击下方"返回仪表板"</i>"""
-        
-        keyboard = InlineKeyboardMarkup([
-            [InlineKeyboardButton("🔙 返回仪表板", callback_data="broadcast_dashboard")],
-            [InlineKeyboardButton("🗑️ 清空媒体", callback_data="broadcast_media_clear")]
         ])
         
         self.safe_edit_message(query, text, 'HTML', keyboard)
@@ -9315,10 +9034,6 @@ class EnhancedBot:
         
         if user_id not in self.pending_broadcasts:
             self.safe_edit_message(query, "❌ 没有待处理的广播任务")
-    def handle_broadcast_media_view(self, query, user_id):
-        """查看当前媒体"""
-        query.answer()
-        if user_id not in self.pending_broadcasts:
             return
         
         task = self.pending_broadcasts[user_id]
@@ -9386,117 +9101,6 @@ class EnhancedBot:
         
         keyboard = InlineKeyboardMarkup([
             [InlineKeyboardButton("❌ 取消", callback_data="broadcast_cancel")]
-        if task.get('media_type') == 'photo' and task.get('photo_file_id'):
-            # 发送预览图片给管理员
-            try:
-                query.message.bot.send_photo(
-                    chat_id=user_id,
-                    photo=task['photo_file_id'],
-                    caption="📸 当前媒体预览"
-                )
-                query.answer("已发送预览")
-            except Exception as e:
-                query.answer(f"❌ 预览失败: {str(e)}")
-        else:
-            query.answer("❗尚未设置媒体")
-    
-    def handle_broadcast_media_clear(self, query, user_id):
-        """清空媒体"""
-        query.answer("已清空媒体")
-        if user_id not in self.pending_broadcasts:
-            return
-        
-        task = self.pending_broadcasts[user_id]
-        task['media_type'] = 'none'
-        task['photo_file_id'] = ''
-        task['step'] = 'dashboard'
-        self.db.save_user(user_id, "", "", "")
-        
-        self.show_broadcast_dashboard(query, user_id)
-    
-    def handle_broadcast_text_start(self, query, update, context, user_id):
-        """开始文本输入"""
-        query.answer()
-        if user_id not in self.pending_broadcasts:
-            return
-        
-        task = self.pending_broadcasts[user_id]
-        task['step'] = 'text'
-        self.db.save_user(user_id, "", "", "waiting_broadcast_text")
-        
-        text = """<b>📝 输入文本内容</b>
-
-请输入群发文本（支持HTML）：
-• 粗体：<code>&lt;b&gt;文本&lt;/b&gt;</code>
-• 斜体：<code>&lt;i&gt;文本&lt;/i&gt;</code>
-• 链接：<code>&lt;a href="URL"&gt;文本&lt;/a&gt;</code>
-
-<b>注意：</b>
-• 有媒体时，文本作为图片说明（最多1024字符）
-• 无媒体时，文本单独发送
-
-发送后返回仪表板。"""
-        
-        keyboard = InlineKeyboardMarkup([
-            [InlineKeyboardButton("🔙 返回仪表板", callback_data="broadcast_dashboard")]
-        ])
-        
-        self.safe_edit_message(query, text, 'HTML', keyboard)
-    
-    def handle_broadcast_text_view(self, query, user_id):
-        """查看当前文本"""
-        query.answer()
-        if user_id not in self.pending_broadcasts:
-            return
-        
-        task = self.pending_broadcasts[user_id]
-        text_html = task.get('text_html', '').strip()
-        
-        if text_html:
-            preview = text_html if len(text_html) <= 200 else text_html[:200] + "..."
-            try:
-                query.message.bot.send_message(
-                    chat_id=user_id,
-                    text=f"<b>📄 当前文本：</b>\n\n{preview}",
-                    parse_mode='HTML'
-                )
-                query.answer("已发送预览")
-            except Exception as e:
-                query.answer(f"❌ 预览失败: {str(e)}")
-        else:
-            query.answer("❗尚未填写文本")
-    
-    def handle_broadcast_buttons_start(self, query, update, context, user_id):
-        """开始按钮输入"""
-        query.answer()
-        if user_id not in self.pending_broadcasts:
-            return
-        
-        task = self.pending_broadcasts[user_id]
-        task['step'] = 'buttons'
-        self.db.save_user(user_id, "", "", "waiting_broadcast_buttons")
-        
-        text = """<b>🔘 添加自定义按钮（可选）</b>
-
-每行一个按钮，最多4个：
-
-<b>URL按钮：</b>
-<code>文本|https://example.com</code>
-
-<b>回调按钮：</b>
-<code>文本|callback:点击提示</code>
-
-示例：
-<code>官网|https://telegram.org
-查看详情|callback:感谢查看～</code>
-
-发送后返回仪表板。
-
-💡 <i>不想添加？点击下方"清空按钮"</i>"""
-        
-        keyboard = InlineKeyboardMarkup([
-            [InlineKeyboardButton("🔙 返回仪表板", callback_data="broadcast_dashboard")],
-            [InlineKeyboardButton("🗑️ 清空按钮", callback_data="broadcast_buttons_clear")]
         ])
         
         self.safe_edit_message(query, text, 'HTML', keyboard)
@@ -9538,39 +9142,6 @@ class EnhancedBot:
         
         if user_id not in self.pending_broadcasts:
             self.safe_edit_message(query, "❌ 没有待处理的广播任务")
-    def handle_broadcast_buttons_view(self, query, user_id):
-        """查看当前按钮"""
-        query.answer()
-        if user_id not in self.pending_broadcasts:
-            return
-        
-        task = self.pending_broadcasts[user_id]
-        buttons = task.get('buttons', [])
-        
-        if buttons:
-            text = "<b>🔘 当前按钮：</b>\n\n"
-            for i, btn in enumerate(buttons, 1):
-                if btn['type'] == 'url':
-                    text += f"{i}. {btn['text']} → {btn['url']}\n"
-                else:
-                    text += f"{i}. {btn['text']} (回调提示)\n"
-            
-            try:
-                query.message.bot.send_message(
-                    chat_id=user_id,
-                    text=text,
-                    parse_mode='HTML'
-                )
-                query.answer("已发送预览")
-            except Exception as e:
-                query.answer(f"❌ 预览失败: {str(e)}")
-        else:
-            query.answer("❗尚未设置按钮")
-    
-    def handle_broadcast_buttons_clear(self, query, user_id):
-        """清空按钮"""
-        query.answer("已清空按钮")
-        if user_id not in self.pending_broadcasts:
             return
         
         task = self.pending_broadcasts[user_id]
@@ -9995,14 +9566,9 @@ class EnhancedBot:
             'new_7d': '新用户(7天)'
         }
         
-        # 媒体信息
-        media_info = ""
-        if task.get('media_type') == 'photo' and task.get('photo_file_id'):
-            media_info = "\n<b>📸 媒体:</b> 含图片"
-        
         # 生成预览
         buttons_preview = ""
-        if task.get('buttons'):
+        if task['buttons']:
             buttons_preview = "\n\n<b>🔘 按钮:</b>\n"
             for i, btn in enumerate(task['buttons'], 1):
                 if btn['type'] == 'url':
@@ -10010,16 +9576,14 @@ class EnhancedBot:
                 else:
                     buttons_preview += f"{i}. {btn['text']} (点击提示)\n"
         
-        # 使用text_html
-        text_content = task.get('text_html', task.get('content', ''))
-        
         text = f"""
 <b>📢 群发通知预览</b>
 
-<b>🎯 目标:</b> {target_names.get(target, target)} ({len(target_users)} 人){media_info}
+<b>📋 标题:</b> {task['title']}
+<b>🎯 目标:</b> {target_names.get(target, target)} ({len(target_users)} 人)
 
 <b>📄 内容:</b>
-{text_content[:200]}{'...' if len(text_content) > 200 else ''}{buttons_preview}
+{task['content'][:200]}{'...' if len(task['content']) > 200 else ''}{buttons_preview}
 
 <b>⚠️ 确认发送？</b>
 • 预计耗时: {len(target_users) * 0.05:.1f} 秒
@@ -10028,7 +9592,7 @@ class EnhancedBot:
         
         keyboard = InlineKeyboardMarkup([
             [InlineKeyboardButton("✅ 开始发送", callback_data="broadcast_confirm_send")],
-            [InlineKeyboardButton("🔙 返回仪表板", callback_data="broadcast_dashboard")],
+            [InlineKeyboardButton("✏️ 返回修改", callback_data="broadcast_edit")],
             [InlineKeyboardButton("❌ 取消", callback_data="broadcast_cancel")]
         ])
         
@@ -10045,19 +9609,14 @@ class EnhancedBot:
         
         task = self.pending_broadcasts[user_id]
         
-        # 使用text_html，向后兼容content
-        text_content = task.get('text_html', task.get('content', ''))
-        
-        # 插入广播记录（包含媒体信息）
-        buttons_json = json.dumps(task.get('buttons', []), ensure_ascii=False)
+        # 插入广播记录
+        buttons_json = json.dumps(task['buttons'], ensure_ascii=False)
         broadcast_id = self.db.insert_broadcast_record(
-            task.get('title', '广播消息'),  # 默认标题
-            text_content,
+            task['title'],
+            task['content'],
             buttons_json,
             task['target'],
-            user_id,
-            media_type=task.get('media_type', 'none'),
-            media_ref=task.get('photo_file_id', '')
+            user_id
         )
         
         if not broadcast_id:
@@ -10098,7 +9657,7 @@ class EnhancedBot:
         
         # 构建按钮
         keyboard = None
-        if task.get('buttons'):
+        if task['buttons']:
             button_rows = []
             for btn in task['buttons']:
                 if btn['type'] == 'url':
@@ -10106,12 +9665,6 @@ class EnhancedBot:
                 else:
                     button_rows.append([InlineKeyboardButton(btn['text'], callback_data=btn['data'])])
             keyboard = InlineKeyboardMarkup(button_rows)
-        
-        # 获取文本内容
-        text_content = task.get('text_html', task.get('content', ''))
-        
-        # 检查是否有媒体
-        has_photo = task.get('media_type') == 'photo' and task.get('photo_file_id')
         
         # 发送统计
         success_count = 0
@@ -10135,44 +9688,24 @@ class EnhancedBot:
                 
                 for user_id in batch:
                     try:
-                        if has_photo:
-                            # 发送图片+文字
-                            context.bot.send_photo(
-                                chat_id=user_id,
-                                photo=task['photo_file_id'],
-                                caption=text_content,
-                                parse_mode='HTML',
-                                reply_markup=keyboard
-                            )
-                        else:
-                            # 仅发送文字
-                            context.bot.send_message(
-                                chat_id=user_id,
-                                text=text_content,
-                                parse_mode='HTML',
-                                reply_markup=keyboard
-                            )
+                        context.bot.send_message(
+                            chat_id=user_id,
+                            text=task['content'],
+                            parse_mode='HTML',
+                            reply_markup=keyboard
+                        )
                         success_count += 1
                         self.db.add_broadcast_log(broadcast_id, user_id, 'success')
                     except RetryAfter as e:
                         # 处理速率限制
                         await asyncio.sleep(e.retry_after + 1)
                         try:
-                            if has_photo:
-                                context.bot.send_photo(
-                                    chat_id=user_id,
-                                    photo=task['photo_file_id'],
-                                    caption=text_content,
-                                    parse_mode='HTML',
-                                    reply_markup=keyboard
-                                )
-                            else:
-                                context.bot.send_message(
-                                    chat_id=user_id,
-                                    text=text_content,
-                                    parse_mode='HTML',
-                                    reply_markup=keyboard
-                                )
+                            context.bot.send_message(
+                                chat_id=user_id,
+                                text=task['content'],
+                                parse_mode='HTML',
+                                reply_markup=keyboard
+                            )
                             success_count += 1
                             self.db.add_broadcast_log(broadcast_id, user_id, 'success')
                         except Exception as retry_err:
@@ -10346,11 +9879,6 @@ class EnhancedBot:
         }
         target_name = target_names.get(detail['target'], detail['target'])
         
-        # 媒体信息
-        media_info = ""
-        if detail.get('media_type') == 'photo':
-            media_info = "\n<b>📸 媒体:</b> 含图片"
-        
         # 按钮信息
         buttons_info = ""
         if detail['buttons_json']:
@@ -10372,9 +9900,9 @@ class EnhancedBot:
 <b>📋 广播详情</b>
 
 <b>🆔 ID:</b> <code>{detail['id']}</code>
-<b>📋 标题:</b> {detail.get('title', '广播消息')}
+<b>📋 标题:</b> {detail['title']}
 <b>📅 创建时间:</b> {detail['created_at']}
-<b>⚙️ 状态:</b> {status_icon}{media_info}
+<b>⚙️ 状态:</b> {status_icon}
 
 <b>🎯 目标群体:</b> {target_name}
 <b>👥 目标人数:</b> {detail['total']} 人
@@ -10432,28 +9960,6 @@ class EnhancedBot:
         print("✅ 速度优化: 预计提升3-5倍")
         print("🛑 按 Ctrl+C 停止机器人")
         print("-" * 50)
-        
-        # 启动广播超时清理任务
-        def cleanup_expired_broadcasts():
-            while True:
-                try:
-                    time.sleep(60)  # 每分钟检查一次
-                    current_time = time.time()
-                    expired_users = []
-                    
-                    for user_id, task in self.pending_broadcasts.items():
-                        if current_time - task.get('started_at', 0) > 300:  # 5分钟超时
-                            expired_users.append(user_id)
-                    
-                    for user_id in expired_users:
-                        del self.pending_broadcasts[user_id]
-                        self.db.save_user(user_id, "", "", "")
-                        print(f"🧹 清理过期广播任务: user_id={user_id}")
-                except Exception as e:
-                    print(f"⚠️ 广播清理任务错误: {e}")
-        
-        cleanup_thread = threading.Thread(target=cleanup_expired_broadcasts, daemon=True)
-        cleanup_thread.start()
         
         try:
             self.updater.start_polling()
@@ -10554,7 +10060,7 @@ def setup_session_directory():
 
 def main():
     print("🔍 Telegram账号检测机器人 V8.0")
-    print("⚡ 二级密码管理器修复完整版")
+    print("⚡ 群发通知完整版")
     print("=" * 50)
     
     # 设置session目录并清理残留文件
