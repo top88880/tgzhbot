@@ -1064,6 +1064,37 @@ class Database:
             )
         """)
         
+        # 广播消息表
+        c.execute("""
+            CREATE TABLE IF NOT EXISTS broadcasts (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                title TEXT NOT NULL,
+                content TEXT NOT NULL,
+                buttons_json TEXT,
+                target TEXT NOT NULL,
+                created_by INTEGER NOT NULL,
+                created_at TEXT NOT NULL,
+                status TEXT DEFAULT 'pending',
+                total INTEGER DEFAULT 0,
+                success INTEGER DEFAULT 0,
+                failed INTEGER DEFAULT 0,
+                duration_sec REAL DEFAULT 0
+            )
+        """)
+        
+        # 广播日志表
+        c.execute("""
+            CREATE TABLE IF NOT EXISTS broadcast_logs (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                broadcast_id INTEGER NOT NULL,
+                user_id INTEGER NOT NULL,
+                status TEXT NOT NULL,
+                error TEXT,
+                sent_at TEXT NOT NULL,
+                FOREIGN KEY (broadcast_id) REFERENCES broadcasts(id)
+            )
+        """)
+        
         conn.commit()
         conn.close()
     
@@ -1442,6 +1473,173 @@ class Database:
                 return True, "系统默认", None
         except:
             return True, "系统默认", None
+    
+    # ================================
+    # 广播消息相关方法
+    # ================================
+    
+    def get_target_users(self, target: str) -> List[int]:
+        """获取目标用户列表"""
+        try:
+            conn = sqlite3.connect(self.db_name)
+            c = conn.cursor()
+            
+            if target == "all":
+                # 所有用户
+                c.execute("SELECT user_id FROM users")
+            elif target == "members":
+                # 仅会员（有效会员）
+                now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+                c.execute("""
+                    SELECT user_id FROM memberships 
+                    WHERE trial_expiry_time > ?
+                """, (now,))
+            elif target == "active_7d":
+                # 活跃用户（7天内）
+                cutoff = (datetime.now() - timedelta(days=7)).strftime('%Y-%m-%d %H:%M:%S')
+                c.execute("""
+                    SELECT user_id FROM users 
+                    WHERE last_active >= ?
+                """, (cutoff,))
+            elif target == "new_7d":
+                # 新用户（7天内）
+                cutoff = (datetime.now() - timedelta(days=7)).strftime('%Y-%m-%d %H:%M:%S')
+                c.execute("""
+                    SELECT user_id FROM users 
+                    WHERE register_time >= ?
+                """, (cutoff,))
+            else:
+                conn.close()
+                return []
+            
+            result = [row[0] for row in c.fetchall()]
+            conn.close()
+            return result
+        except Exception as e:
+            print(f"❌ 获取目标用户失败: {e}")
+            return []
+    
+    def insert_broadcast_record(self, title: str, content: str, buttons_json: str, 
+                               target: str, created_by: int) -> Optional[int]:
+        """插入广播记录并返回ID"""
+        try:
+            conn = sqlite3.connect(self.db_name)
+            c = conn.cursor()
+            now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            
+            c.execute("""
+                INSERT INTO broadcasts 
+                (title, content, buttons_json, target, created_by, created_at, status)
+                VALUES (?, ?, ?, ?, ?, ?, 'pending')
+            """, (title, content, buttons_json, target, created_by, now))
+            
+            broadcast_id = c.lastrowid
+            conn.commit()
+            conn.close()
+            return broadcast_id
+        except Exception as e:
+            print(f"❌ 插入广播记录失败: {e}")
+            return None
+    
+    def update_broadcast_progress(self, broadcast_id: int, success: int, 
+                                 failed: int, status: str, duration: float):
+        """更新广播进度"""
+        try:
+            conn = sqlite3.connect(self.db_name)
+            c = conn.cursor()
+            
+            c.execute("""
+                UPDATE broadcasts 
+                SET success = ?, failed = ?, status = ?, duration_sec = ?, total = ?
+                WHERE id = ?
+            """, (success, failed, status, duration, success + failed, broadcast_id))
+            
+            conn.commit()
+            conn.close()
+            return True
+        except Exception as e:
+            print(f"❌ 更新广播进度失败: {e}")
+            return False
+    
+    def add_broadcast_log(self, broadcast_id: int, user_id: int, 
+                         status: str, error: Optional[str] = None):
+        """添加广播日志"""
+        try:
+            conn = sqlite3.connect(self.db_name)
+            c = conn.cursor()
+            now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            
+            c.execute("""
+                INSERT INTO broadcast_logs 
+                (broadcast_id, user_id, status, error, sent_at)
+                VALUES (?, ?, ?, ?, ?)
+            """, (broadcast_id, user_id, status, error, now))
+            
+            conn.commit()
+            conn.close()
+            return True
+        except Exception as e:
+            print(f"❌ 添加广播日志失败: {e}")
+            return False
+    
+    def get_broadcast_history(self, limit: int = 10) -> List[Tuple]:
+        """获取广播历史记录"""
+        try:
+            conn = sqlite3.connect(self.db_name)
+            c = conn.cursor()
+            
+            c.execute("""
+                SELECT id, title, target, created_at, status, total, success, failed
+                FROM broadcasts 
+                ORDER BY created_at DESC 
+                LIMIT ?
+            """, (limit,))
+            
+            result = c.fetchall()
+            conn.close()
+            return result
+        except Exception as e:
+            print(f"❌ 获取广播历史失败: {e}")
+            return []
+    
+    def get_broadcast_detail(self, broadcast_id: int) -> Optional[Dict[str, Any]]:
+        """获取广播详情"""
+        try:
+            conn = sqlite3.connect(self.db_name)
+            c = conn.cursor()
+            
+            c.execute("""
+                SELECT id, title, content, buttons_json, target, created_by, 
+                       created_at, status, total, success, failed, duration_sec
+                FROM broadcasts 
+                WHERE id = ?
+            """, (broadcast_id,))
+            
+            row = c.fetchone()
+            if not row:
+                conn.close()
+                return None
+            
+            result = {
+                'id': row[0],
+                'title': row[1],
+                'content': row[2],
+                'buttons_json': row[3],
+                'target': row[4],
+                'created_by': row[5],
+                'created_at': row[6],
+                'status': row[7],
+                'total': row[8],
+                'success': row[9],
+                'failed': row[10],
+                'duration_sec': row[11]
+            }
+            
+            conn.close()
+            return result
+        except Exception as e:
+            print(f"❌ 获取广播详情失败: {e}")
+            return None
 
 # ================================
 # 文件处理器（保持原有功能）
@@ -4475,6 +4673,9 @@ class EnhancedBot:
         # 初始化账号分类器
         self.classifier = AccountClassifier() if CLASSIFY_AVAILABLE else None
         self.pending_classify_tasks: Dict[int, Dict[str, Any]] = {}
+        
+        # 广播消息待处理任务
+        self.pending_broadcasts: Dict[int, Dict[str, Any]] = {}
 
         self.updater = Updater(config.TOKEN, use_context=True)
         self.dp = self.updater.dispatcher
@@ -5781,7 +5982,14 @@ class EnhancedBot:
             self.handle_grant_membership(query, user_id_to_grant)
         elif data.startswith("make_admin_"):
             user_id_to_make = int(data.split("_")[2])
-            self.handle_make_admin(query, user_id_to_make)        
+            self.handle_make_admin(query, user_id_to_make)
+        # 广播消息回调
+        elif data.startswith("broadcast_"):
+            self.handle_broadcast_callbacks(update, context, query, data)
+        elif data.startswith("broadcast_alert_"):
+            # 处理广播按钮回调 - 显示提示信息
+            # 注意：实际的alert文本需要从按钮配置中获取，这里只是示例
+            query.answer("✨ 感谢您的关注！", show_alert=True)
         elif data.startswith("status_") or data.startswith("count_"):
             query.answer("ℹ️ 这是状态信息")
     
@@ -6062,6 +6270,9 @@ class EnhancedBot:
             [
                 InlineKeyboardButton("🔍 搜索用户", callback_data="admin_search"),
                 InlineKeyboardButton("📋 最近用户", callback_data="admin_recent")
+            ],
+            [
+                InlineKeyboardButton("📢 群发通知", callback_data="broadcast_menu")
             ],
             [InlineKeyboardButton("🔙 返回主菜单", callback_data="back_to_main")]
         ]
@@ -7653,6 +7864,30 @@ class EnhancedBot:
     def handle_text(self, update: Update, context: CallbackContext):
         user_id = update.effective_user.id
         text = update.message.text
+        
+        # 检查广播消息输入
+        try:
+            conn = sqlite3.connect(config.DB_NAME)
+            c = conn.cursor()
+            c.execute("SELECT status FROM users WHERE user_id = ?", (user_id,))
+            row = c.fetchone()
+            conn.close()
+            
+            if row:
+                user_status = row[0]
+                
+                if user_status == "waiting_broadcast_title":
+                    self.handle_broadcast_title_input(update, context, user_id, text)
+                    return
+                elif user_status == "waiting_broadcast_content":
+                    self.handle_broadcast_content_input(update, context, user_id, text)
+                    return
+                elif user_status == "waiting_broadcast_buttons":
+                    self.handle_broadcast_buttons_input(update, context, user_id, text)
+                    return
+        except Exception as e:
+            print(f"❌ 检查广播状态失败: {e}")
+        
         # 新增：处理 API 转换等待的 2FA 输入
         if user_id in getattr(self, "pending_api_tasks", {}):
             two_fa_input = (text or "").strip()
@@ -8379,6 +8614,719 @@ class EnhancedBot:
             self.safe_send_message(update, f"❌ 拆分失败: {str(e)}")
         finally:
             self._classify_cleanup(user_id)
+    
+    # ================================
+    # 广播消息功能
+    # ================================
+    
+    def handle_broadcast_callbacks(self, update, context, query, data):
+        """处理广播消息相关回调"""
+        user_id = query.from_user.id
+        
+        # 权限检查
+        if not self.db.is_admin(user_id):
+            query.answer("❌ 仅管理员可访问广播功能")
+            return
+        
+        if data == "broadcast_menu":
+            self.show_broadcast_menu(query)
+        elif data == "broadcast_create":
+            self.start_broadcast_wizard(query, update, context)
+        elif data == "broadcast_history":
+            self.show_broadcast_history(query)
+        elif data.startswith("broadcast_history_detail_"):
+            broadcast_id = int(data.split("_")[-1])
+            self.show_broadcast_detail(query, broadcast_id)
+        elif data.startswith("broadcast_target_"):
+            target = data.split("_")[-1]
+            self.handle_broadcast_target_selection(query, update, context, target)
+        elif data == "broadcast_confirm_send":
+            self.start_broadcast_sending(query, update, context)
+        elif data == "broadcast_edit":
+            self.restart_broadcast_wizard(query, update, context)
+        elif data == "broadcast_cancel":
+            self.cancel_broadcast(query, user_id)
+    
+    def show_broadcast_menu(self, query):
+        """显示广播菜单"""
+        query.answer()
+        
+        text = """
+<b>📢 群发通知管理</b>
+
+<b>💡 功能说明</b>
+• 支持HTML格式内容（粗体、斜体、链接等）
+• 可添加自定义按钮（URL或回调）
+• 智能节流避免触发限制
+• 实时进度显示
+• 完整历史记录
+
+<b>🎯 选择操作</b>
+点击下方按钮开始使用
+        """
+        
+        keyboard = InlineKeyboardMarkup([
+            [InlineKeyboardButton("📝 创建群发", callback_data="broadcast_create")],
+            [InlineKeyboardButton("📜 历史记录", callback_data="broadcast_history")],
+            [InlineKeyboardButton("🔙 返回", callback_data="admin_panel")]
+        ])
+        
+        self.safe_edit_message(query, text, 'HTML', keyboard)
+    
+    def start_broadcast_wizard(self, query, update, context):
+        """开始广播创建向导 - 步骤1：输入标题"""
+        user_id = query.from_user.id
+        query.answer()
+        
+        # 初始化广播任务
+        self.pending_broadcasts[user_id] = {
+            'step': 'title',
+            'started_at': time.time(),
+            'title': '',
+            'content': '',
+            'buttons': [],
+            'target': '',
+            'preview_message_id': None,
+            'broadcast_id': None
+        }
+        
+        # 更新用户状态
+        self.db.save_user(
+            user_id,
+            query.from_user.username or "",
+            query.from_user.first_name or "",
+            "waiting_broadcast_title"
+        )
+        
+        text = """
+<b>📝 创建群发通知 - 步骤 1/4</b>
+
+<b>📋 请输入通知标题</b>
+
+• 标题用于识别此次群发
+• 建议不超过80个字符
+• 标题不会显示给用户
+
+⏰ <i>5分钟内未输入将自动取消</i>
+        """
+        
+        self.safe_edit_message(query, text, 'HTML')
+    
+    def handle_broadcast_title_input(self, update, context, user_id, title):
+        """处理标题输入"""
+        if user_id not in self.pending_broadcasts:
+            self.safe_send_message(update, "❌ 没有待处理的广播任务")
+            return
+        
+        task = self.pending_broadcasts[user_id]
+        
+        # 检查超时
+        if time.time() - task['started_at'] > 300:  # 5分钟
+            del self.pending_broadcasts[user_id]
+            self.db.save_user(user_id, "", "", "")
+            self.safe_send_message(update, "❌ 操作超时，请重新开始")
+            return
+        
+        # 验证标题
+        title = title.strip()
+        if not title:
+            self.safe_send_message(update, "❌ 标题不能为空，请重新输入")
+            return
+        
+        if len(title) > 100:
+            self.safe_send_message(update, "❌ 标题过长（最多100字符），请重新输入")
+            return
+        
+        # 保存标题并进入下一步
+        task['title'] = title
+        task['step'] = 'content'
+        
+        # 更新状态
+        self.db.save_user(user_id, "", "", "waiting_broadcast_content")
+        
+        text = f"""
+<b>📝 创建群发通知 - 步骤 2/4</b>
+
+✅ 标题已设置: <code>{title}</code>
+
+<b>📄 请输入通知内容</b>
+
+• 支持HTML格式：
+  <code>&lt;b&gt;粗体&lt;/b&gt;</code>
+  <code>&lt;i&gt;斜体&lt;/i&gt;</code>
+  <code>&lt;a href="URL"&gt;链接&lt;/a&gt;</code>
+  <code>&lt;code&gt;代码&lt;/code&gt;</code>
+
+⏰ <i>5分钟内未输入将自动取消</i>
+        """
+        
+        self.safe_send_message(update, text, 'HTML')
+    
+    def handle_broadcast_content_input(self, update, context, user_id, content):
+        """处理内容输入"""
+        if user_id not in self.pending_broadcasts:
+            self.safe_send_message(update, "❌ 没有待处理的广播任务")
+            return
+        
+        task = self.pending_broadcasts[user_id]
+        
+        # 检查超时
+        if time.time() - task['started_at'] > 300:
+            del self.pending_broadcasts[user_id]
+            self.db.save_user(user_id, "", "", "")
+            self.safe_send_message(update, "❌ 操作超时，请重新开始")
+            return
+        
+        # 验证内容
+        content = content.strip()
+        if not content:
+            self.safe_send_message(update, "❌ 内容不能为空，请重新输入")
+            return
+        
+        # 保存内容并进入下一步
+        task['content'] = content
+        task['step'] = 'buttons'
+        
+        # 更新状态
+        self.db.save_user(user_id, "", "", "waiting_broadcast_buttons")
+        
+        text = f"""
+<b>📝 创建群发通知 - 步骤 3/4</b>
+
+✅ 内容已设置
+
+<b>🔘 请输入自定义按钮（可选）</b>
+
+• 每行一个按钮（最多4个）
+• URL按钮格式：<code>文本|https://example.com</code>
+• 回调按钮格式：<code>文本|callback:提示信息</code>
+
+示例：
+<code>官方网站|https://telegram.org
+点我试试|callback:你点击了按钮！</code>
+
+💡 <i>输入"跳过"或"skip"可跳过此步骤</i>
+⏰ <i>5分钟内未输入将自动取消</i>
+        """
+        
+        self.safe_send_message(update, text, 'HTML')
+    
+    def handle_broadcast_buttons_input(self, update, context, user_id, buttons_text):
+        """处理按钮输入"""
+        if user_id not in self.pending_broadcasts:
+            self.safe_send_message(update, "❌ 没有待处理的广播任务")
+            return
+        
+        task = self.pending_broadcasts[user_id]
+        
+        # 检查超时
+        if time.time() - task['started_at'] > 300:
+            del self.pending_broadcasts[user_id]
+            self.db.save_user(user_id, "", "", "")
+            self.safe_send_message(update, "❌ 操作超时，请重新开始")
+            return
+        
+        # 检查是否跳过
+        buttons_text = buttons_text.strip()
+        if buttons_text.lower() in ['跳过', 'skip', '']:
+            task['buttons'] = []
+            self.show_target_selection(update, context, user_id)
+            return
+        
+        # 解析按钮
+        buttons = []
+        lines = buttons_text.split('\n')[:4]  # 最多4个按钮
+        
+        for line in lines:
+            line = line.strip()
+            if not line or '|' not in line:
+                continue
+            
+            parts = line.split('|', 1)
+            if len(parts) != 2:
+                continue
+            
+            text = parts[0].strip()
+            value = parts[1].strip()
+            
+            if not text or not value:
+                continue
+            
+            # 判断按钮类型
+            if value.startswith('callback:'):
+                # 回调按钮
+                callback_text = value[9:].strip()
+                buttons.append({
+                    'type': 'callback',
+                    'text': text,
+                    'data': f'broadcast_alert_{len(buttons)}',
+                    'alert': callback_text
+                })
+            elif value.startswith('http://') or value.startswith('https://'):
+                # URL按钮
+                buttons.append({
+                    'type': 'url',
+                    'text': text,
+                    'url': value
+                })
+            else:
+                # 尝试作为URL处理
+                if '.' in value:
+                    buttons.append({
+                        'type': 'url',
+                        'text': text,
+                        'url': f'https://{value}'
+                    })
+        
+        task['buttons'] = buttons
+        self.show_target_selection(update, context, user_id)
+    
+    def show_target_selection(self, update, context, user_id):
+        """显示目标用户选择"""
+        if user_id not in self.pending_broadcasts:
+            return
+        
+        task = self.pending_broadcasts[user_id]
+        task['step'] = 'target'
+        
+        # 更新状态
+        self.db.save_user(user_id, "", "", "")
+        
+        # 获取各类用户数量
+        all_users = len(self.db.get_target_users('all'))
+        members = len(self.db.get_target_users('members'))
+        active_7d = len(self.db.get_target_users('active_7d'))
+        new_7d = len(self.db.get_target_users('new_7d'))
+        
+        text = f"""
+<b>📝 创建群发通知 - 步骤 4/4</b>
+
+✅ 标题: <code>{task['title']}</code>
+✅ 内容已设置
+✅ 按钮: {len(task['buttons'])} 个
+
+<b>🎯 请选择目标用户</b>
+
+请选择要发送通知的用户群体：
+        """
+        
+        keyboard = InlineKeyboardMarkup([
+            [InlineKeyboardButton(f"👥 全部用户 ({all_users})", callback_data="broadcast_target_all")],
+            [InlineKeyboardButton(f"💎 仅会员 ({members})", callback_data="broadcast_target_members")],
+            [InlineKeyboardButton(f"🔥 活跃用户(7天) ({active_7d})", callback_data="broadcast_target_active_7d")],
+            [InlineKeyboardButton(f"🆕 新用户(7天) ({new_7d})", callback_data="broadcast_target_new_7d")],
+            [InlineKeyboardButton("❌ 取消", callback_data="broadcast_cancel")]
+        ])
+        
+        self.safe_send_message(update, text, 'HTML', keyboard)
+    
+    def handle_broadcast_target_selection(self, query, update, context, target):
+        """处理目标选择"""
+        user_id = query.from_user.id
+        query.answer()
+        
+        if user_id not in self.pending_broadcasts:
+            self.safe_edit_message(query, "❌ 没有待处理的广播任务")
+            return
+        
+        task = self.pending_broadcasts[user_id]
+        task['target'] = target
+        
+        # 获取目标用户列表
+        target_users = self.db.get_target_users(target)
+        
+        if not target_users:
+            self.safe_edit_message(query, "❌ 未找到符合条件的用户")
+            return
+        
+        # 目标名称映射
+        target_names = {
+            'all': '全部用户',
+            'members': '仅会员',
+            'active_7d': '活跃用户(7天)',
+            'new_7d': '新用户(7天)'
+        }
+        
+        # 生成预览
+        buttons_preview = ""
+        if task['buttons']:
+            buttons_preview = "\n\n<b>🔘 按钮:</b>\n"
+            for i, btn in enumerate(task['buttons'], 1):
+                if btn['type'] == 'url':
+                    buttons_preview += f"{i}. {btn['text']} → {btn['url']}\n"
+                else:
+                    buttons_preview += f"{i}. {btn['text']} (点击提示)\n"
+        
+        text = f"""
+<b>📢 群发通知预览</b>
+
+<b>📋 标题:</b> {task['title']}
+<b>🎯 目标:</b> {target_names.get(target, target)} ({len(target_users)} 人)
+
+<b>📄 内容:</b>
+{task['content'][:200]}{'...' if len(task['content']) > 200 else ''}{buttons_preview}
+
+<b>⚠️ 确认发送？</b>
+• 预计耗时: {len(target_users) * 0.05:.1f} 秒
+• 发送模式: 智能节流批量发送
+        """
+        
+        keyboard = InlineKeyboardMarkup([
+            [InlineKeyboardButton("✅ 开始发送", callback_data="broadcast_confirm_send")],
+            [InlineKeyboardButton("✏️ 返回修改", callback_data="broadcast_edit")],
+            [InlineKeyboardButton("❌ 取消", callback_data="broadcast_cancel")]
+        ])
+        
+        self.safe_edit_message(query, text, 'HTML', keyboard)
+    
+    def start_broadcast_sending(self, query, update, context):
+        """开始发送广播"""
+        user_id = query.from_user.id
+        query.answer()
+        
+        if user_id not in self.pending_broadcasts:
+            self.safe_edit_message(query, "❌ 没有待处理的广播任务")
+            return
+        
+        task = self.pending_broadcasts[user_id]
+        
+        # 插入广播记录
+        buttons_json = json.dumps(task['buttons'], ensure_ascii=False)
+        broadcast_id = self.db.insert_broadcast_record(
+            task['title'],
+            task['content'],
+            buttons_json,
+            task['target'],
+            user_id
+        )
+        
+        if not broadcast_id:
+            self.safe_edit_message(query, "❌ 创建广播记录失败")
+            return
+        
+        task['broadcast_id'] = broadcast_id
+        
+        # 启动异步发送
+        def send_broadcast():
+            asyncio.run(self.execute_broadcast_sending(update, context, user_id, broadcast_id))
+        
+        thread = threading.Thread(target=send_broadcast, daemon=True)
+        thread.start()
+        
+        self.safe_edit_message(query, "📤 <b>开始发送广播...</b>\n\n正在初始化...", 'HTML')
+    
+    async def execute_broadcast_sending(self, update, context, admin_id, broadcast_id):
+        """执行广播发送"""
+        if admin_id not in self.pending_broadcasts:
+            return
+        
+        task = self.pending_broadcasts[admin_id]
+        start_time = time.time()
+        
+        # 获取目标用户
+        target_users = self.db.get_target_users(task['target'])
+        total = len(target_users)
+        
+        if total == 0:
+            context.bot.send_message(
+                chat_id=admin_id,
+                text="❌ 未找到符合条件的用户",
+                parse_mode='HTML'
+            )
+            del self.pending_broadcasts[admin_id]
+            return
+        
+        # 构建按钮
+        keyboard = None
+        if task['buttons']:
+            button_rows = []
+            for btn in task['buttons']:
+                if btn['type'] == 'url':
+                    button_rows.append([InlineKeyboardButton(btn['text'], url=btn['url'])])
+                else:
+                    button_rows.append([InlineKeyboardButton(btn['text'], callback_data=btn['data'])])
+            keyboard = InlineKeyboardMarkup(button_rows)
+        
+        # 发送统计
+        success_count = 0
+        failed_count = 0
+        
+        # 批量发送
+        batch_size = 25
+        progress_msg = None
+        
+        try:
+            # 发送进度消息
+            progress_msg = context.bot.send_message(
+                chat_id=admin_id,
+                text=f"📤 <b>广播发送中...</b>\n\n• 目标: {total} 人\n• 进度: 0/{total}\n• 成功: 0\n• 失败: 0",
+                parse_mode='HTML'
+            )
+            
+            for i in range(0, total, batch_size):
+                batch = target_users[i:i + batch_size]
+                batch_start = time.time()
+                
+                for user_id in batch:
+                    try:
+                        context.bot.send_message(
+                            chat_id=user_id,
+                            text=task['content'],
+                            parse_mode='HTML',
+                            reply_markup=keyboard
+                        )
+                        success_count += 1
+                        self.db.add_broadcast_log(broadcast_id, user_id, 'success')
+                    except RetryAfter as e:
+                        # 处理速率限制
+                        await asyncio.sleep(e.retry_after + 1)
+                        try:
+                            context.bot.send_message(
+                                chat_id=user_id,
+                                text=task['content'],
+                                parse_mode='HTML',
+                                reply_markup=keyboard
+                            )
+                            success_count += 1
+                            self.db.add_broadcast_log(broadcast_id, user_id, 'success')
+                        except Exception as retry_err:
+                            failed_count += 1
+                            self.db.add_broadcast_log(broadcast_id, user_id, 'failed', str(retry_err))
+                    except BadRequest as e:
+                        # 用户屏蔽机器人或其他错误
+                        failed_count += 1
+                        error_msg = str(e)
+                        if 'bot was blocked' in error_msg.lower():
+                            self.db.add_broadcast_log(broadcast_id, user_id, 'blocked', 'User blocked bot')
+                        else:
+                            self.db.add_broadcast_log(broadcast_id, user_id, 'failed', error_msg)
+                    except Exception as e:
+                        failed_count += 1
+                        self.db.add_broadcast_log(broadcast_id, user_id, 'failed', str(e))
+                
+                # 更新进度
+                processed = success_count + failed_count
+                elapsed = time.time() - start_time
+                speed = processed / elapsed if elapsed > 0 else 0
+                eta = (total - processed) / speed if speed > 0 else 0
+                
+                if progress_msg and processed % batch_size == 0:
+                    try:
+                        progress_msg.edit_text(
+                            f"📤 <b>广播发送中...</b>\n\n"
+                            f"• 目标: {total} 人\n"
+                            f"• 进度: {processed}/{total} ({processed/total*100:.1f}%)\n"
+                            f"• 成功: {success_count}\n"
+                            f"• 失败: {failed_count}\n"
+                            f"• 速度: {speed:.1f} 人/秒\n"
+                            f"• 预计剩余: {int(eta)} 秒",
+                            parse_mode='HTML'
+                        )
+                    except:
+                        pass
+                
+                # 批次间延迟
+                if i + batch_size < total:
+                    await asyncio.sleep(random.uniform(0.8, 1.2))
+            
+            # 完成
+            duration = time.time() - start_time
+            self.db.update_broadcast_progress(
+                broadcast_id, success_count, failed_count, 'completed', duration
+            )
+            
+            # 发送完成消息
+            success_rate = (success_count / total * 100) if total > 0 else 0
+            final_text = f"""
+✅ <b>广播发送完成！</b>
+
+<b>📊 发送统计</b>
+• 目标用户: {total} 人
+• ✅ 成功: {success_count} 人 ({success_rate:.1f}%)
+• ❌ 失败: {failed_count} 人
+• ⏱️ 总用时: {duration:.1f} 秒
+• 🚀 平均速度: {total/duration:.1f} 人/秒
+
+<b>📋 广播ID:</b> <code>{broadcast_id}</code>
+            """
+            
+            context.bot.send_message(
+                chat_id=admin_id,
+                text=final_text,
+                parse_mode='HTML'
+            )
+            
+        except Exception as e:
+            print(f"❌ 广播发送失败: {e}")
+            import traceback
+            traceback.print_exc()
+            
+            # 更新状态
+            duration = time.time() - start_time
+            self.db.update_broadcast_progress(
+                broadcast_id, success_count, failed_count, 'failed', duration
+            )
+            
+            context.bot.send_message(
+                chat_id=admin_id,
+                text=f"❌ <b>广播发送失败</b>\n\n错误: {str(e)}",
+                parse_mode='HTML'
+            )
+        
+        finally:
+            # 清理任务
+            if admin_id in self.pending_broadcasts:
+                del self.pending_broadcasts[admin_id]
+    
+    def show_broadcast_history(self, query):
+        """显示广播历史"""
+        query.answer()
+        
+        history = self.db.get_broadcast_history(10)
+        
+        if not history:
+            text = """
+<b>📜 广播历史记录</b>
+
+暂无广播记录
+            """
+            keyboard = InlineKeyboardMarkup([
+                [InlineKeyboardButton("🔙 返回", callback_data="broadcast_menu")]
+            ])
+            self.safe_edit_message(query, text, 'HTML', keyboard)
+            return
+        
+        text = "<b>📜 广播历史记录</b>\n\n"
+        
+        buttons = []
+        for record in history:
+            broadcast_id, title, target, created_at, status, total, success, failed = record
+            
+            # 状态图标
+            status_icon = {
+                'pending': '⏳',
+                'completed': '✅',
+                'failed': '❌'
+            }.get(status, '❓')
+            
+            # 目标名称
+            target_names = {
+                'all': '全部',
+                'members': '会员',
+                'active_7d': '活跃',
+                'new_7d': '新用户'
+            }
+            target_name = target_names.get(target, target)
+            
+            text += f"{status_icon} <b>{title}</b>\n"
+            text += f"   🎯 {target_name} | 👥 {total} | ✅ {success} | ❌ {failed}\n"
+            text += f"   📅 {created_at}\n\n"
+            
+            buttons.append([
+                InlineKeyboardButton(
+                    f"📋 {title[:20]}{'...' if len(title) > 20 else ''}",
+                    callback_data=f"broadcast_history_detail_{broadcast_id}"
+                )
+            ])
+        
+        buttons.append([InlineKeyboardButton("🔙 返回", callback_data="broadcast_menu")])
+        keyboard = InlineKeyboardMarkup(buttons)
+        
+        self.safe_edit_message(query, text, 'HTML', keyboard)
+    
+    def show_broadcast_detail(self, query, broadcast_id):
+        """显示广播详情"""
+        query.answer()
+        
+        detail = self.db.get_broadcast_detail(broadcast_id)
+        
+        if not detail:
+            self.safe_edit_message(query, "❌ 未找到广播记录")
+            return
+        
+        # 状态图标
+        status_icon = {
+            'pending': '⏳ 待发送',
+            'completed': '✅ 已完成',
+            'failed': '❌ 失败'
+        }.get(detail['status'], '❓ 未知')
+        
+        # 目标名称
+        target_names = {
+            'all': '全部用户',
+            'members': '仅会员',
+            'active_7d': '活跃用户(7天)',
+            'new_7d': '新用户(7天)'
+        }
+        target_name = target_names.get(detail['target'], detail['target'])
+        
+        # 按钮信息
+        buttons_info = ""
+        if detail['buttons_json']:
+            try:
+                buttons = json.loads(detail['buttons_json'])
+                if buttons:
+                    buttons_info = "\n\n<b>🔘 按钮:</b>\n"
+                    for i, btn in enumerate(buttons, 1):
+                        if btn['type'] == 'url':
+                            buttons_info += f"{i}. {btn['text']} → {btn['url']}\n"
+                        else:
+                            buttons_info += f"{i}. {btn['text']} (回调)\n"
+            except:
+                pass
+        
+        success_rate = (detail['success'] / detail['total'] * 100) if detail['total'] > 0 else 0
+        
+        text = f"""
+<b>📋 广播详情</b>
+
+<b>🆔 ID:</b> <code>{detail['id']}</code>
+<b>📋 标题:</b> {detail['title']}
+<b>📅 创建时间:</b> {detail['created_at']}
+<b>⚙️ 状态:</b> {status_icon}
+
+<b>🎯 目标群体:</b> {target_name}
+<b>👥 目标人数:</b> {detail['total']} 人
+
+<b>📊 发送结果:</b>
+• ✅ 成功: {detail['success']} 人 ({success_rate:.1f}%)
+• ❌ 失败: {detail['failed']} 人
+• ⏱️ 用时: {detail['duration_sec']:.1f} 秒
+
+<b>📄 内容:</b>
+{detail['content'][:300]}{'...' if len(detail['content']) > 300 else ''}{buttons_info}
+        """
+        
+        keyboard = InlineKeyboardMarkup([
+            [InlineKeyboardButton("🔙 返回历史", callback_data="broadcast_history")]
+        ])
+        
+        self.safe_edit_message(query, text, 'HTML', keyboard)
+    
+    def cancel_broadcast(self, query, user_id):
+        """取消广播"""
+        query.answer()
+        
+        if user_id in self.pending_broadcasts:
+            del self.pending_broadcasts[user_id]
+        
+        self.db.save_user(user_id, "", "", "")
+        
+        text = "❌ <b>已取消创建广播</b>"
+        keyboard = InlineKeyboardMarkup([
+            [InlineKeyboardButton("🔙 返回", callback_data="broadcast_menu")]
+        ])
+        
+        self.safe_edit_message(query, text, 'HTML', keyboard)
+    
+    def restart_broadcast_wizard(self, query, update, context):
+        """重新开始广播向导"""
+        user_id = query.from_user.id
+        
+        if user_id in self.pending_broadcasts:
+            del self.pending_broadcasts[user_id]
+        
+        self.start_broadcast_wizard(query, update, context)
     
     def run(self):
         print("🚀 启动增强版机器人（速度优化版）...")
