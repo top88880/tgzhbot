@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 """
 Telegram账号检测机器人 - V8.0
-二级密码管理器修复完整版
+账号拆分完整版
 """
 
 # 放在所有 import 附近（顶层，只执行一次）
@@ -4468,13 +4468,7 @@ class EnhancedBot:
 📡 <b>代理状态</b>
 • 代理模式: {'🟢启用' if self.proxy_manager.is_proxy_mode_active(self.db) else '🔴本地连接'}
 • 代理数量: {len(self.proxy_manager.proxies)}个
-• 快速模式: {'🟢开启' if config.PROXY_FAST_MODE else '🔴关闭'}
-• 并发数量: {config.PROXY_CHECK_CONCURRENT if config.PROXY_FAST_MODE else config.MAX_CONCURRENT_CHECKS}个
 
-⚡ <b>速度优化</b>
-• 检测超时: {config.PROXY_CHECK_TIMEOUT if config.PROXY_FAST_MODE else config.CHECK_TIMEOUT}秒
-• 智能重试: {config.PROXY_RETRY_COUNT}次
-• 自动清理: {'🟢启用' if config.PROXY_AUTO_CLEANUP else '🔴关闭'}
 • 当前时间: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
         """
         
@@ -5841,37 +5835,6 @@ class EnhancedBot:
 • 版本: 8.0 (完整版)
 • 状态: ✅正常运行
 • 当前时间: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
-
-<b>⚡ 检测设置</b>
-• 标准并发: {config.MAX_CONCURRENT_CHECKS}个
-• 快速并发: {config.PROXY_CHECK_CONCURRENT}个
-• 标准超时: {config.CHECK_TIMEOUT}秒
-• 快速超时: {config.PROXY_CHECK_TIMEOUT}秒
-• SpamBot等待: {config.SPAMBOT_WAIT_TIME}秒
-• 智能重试: {config.PROXY_RETRY_COUNT}次
-• Telethon: {'✅可用' if TELETHON_AVAILABLE else '❌不可用'}
-
-<b>📡 代理状态</b>
-• 系统配置: {'🟢USE_PROXY=true' if config.USE_PROXY else '🔴USE_PROXY=false'}
-• 代理开关: {'🟢已启用' if self.db.get_proxy_enabled() else '🔴已禁用'}
-• 实际模式: {'🟢代理模式' if self.proxy_manager.is_proxy_mode_active(self.db) else '🔴本地模式'}
-• 代理数量: {len(self.proxy_manager.proxies)}个
-• 代理超时: {config.PROXY_TIMEOUT}秒
-• 代理支持: {'✅完整' if PROXY_SUPPORT else '⚠️基础'}
-
-<b>🚀 速度优化</b>
-• 快速模式: {'✅启用' if config.PROXY_FAST_MODE else '❌禁用'}
-• 自动清理: {'✅启用' if config.PROXY_AUTO_CLEANUP else '❌禁用'}
-• 批量大小: {config.PROXY_BATCH_SIZE}个
-• 预计提升: 3-5倍速度
-
-<b>🛡️ 增强功能</b>
-• 代理轮换: ✅启用
-• 自动故障转移: ✅启用
-• 智能重试: ✅启用
-• 快速预检测: ✅启用
-• 管理员系统: ✅启用
-• 代理开关控制: ✅启用
 """
         
         self.safe_edit_message(query, status_text, 'HTML')
@@ -7768,7 +7731,7 @@ class EnhancedBot:
             self._classify_cleanup(user_id)
     
     def run(self):
-        print("🚀 启动增强版机器人（速度优化版）...")
+        print("🚀 启动机器人（功能完善版）...")
         print(f"📡 代理模式: {'启用' if config.USE_PROXY else '禁用'}")
         print(f"🔢 可用代理: {len(self.proxy_manager.proxies)}个")
         print(f"⚡ 快速模式: {'开启' if config.PROXY_FAST_MODE else '关闭'}")
@@ -7879,8 +7842,8 @@ def setup_session_directory():
 # ================================
 
 def main():
-    print("🔍 Telegram账号检测机器人 V9.0")
-    print("⚡ 二级密码管理器修复完整版")
+    print("🔍 Telegram账号检测机器人 V8.0")
+    print("⚡ 功能完整版")
     print("=" * 50)
     
     # 设置session目录并清理残留文件
