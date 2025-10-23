@@ -4700,10 +4700,15 @@ class EnhancedBot:
         self.dp.add_handler(CommandHandler("classify", self.classify_command))
         # 新增：返回主菜单（优先于通用回调）
         self.dp.add_handler(CallbackQueryHandler(self.on_back_to_main, pattern=r"^back_to_main$"))
+        
+        # 专用：广播消息回调处理器（必须在通用回调之前注册）
+        self.dp.add_handler(CallbackQueryHandler(self.handle_broadcast_callbacks_router, pattern=r"^broadcast_"))
 
         # 通用回调处理（需放在特定回调之后）
         self.dp.add_handler(CallbackQueryHandler(self.handle_callbacks))
         self.dp.add_handler(MessageHandler(Filters.document, self.handle_file))
+        # 新增：广播媒体上传处理
+        self.dp.add_handler(MessageHandler(Filters.photo, self.handle_photo))
         self.dp.add_handler(MessageHandler(Filters.text & ~Filters.command, self.handle_text))
     
     def safe_send_message(self, update, text, parse_mode=None, reply_markup=None):
@@ -7861,6 +7866,120 @@ class EnhancedBot:
                 del self.two_factor_manager.pending_2fa_tasks[user_id]
                 print(f"🗑️ 清理任务信息: user_id={user_id}")
     
+    def handle_photo(self, update: Update, context: CallbackContext):
+        """处理图片上传（用于广播媒体）"""
+        user_id = update.effective_user.id
+        
+        # 检查用户状态
+        try:
+            conn = sqlite3.connect(config.DB_NAME)
+            c = conn.cursor()
+            c.execute("SELECT status FROM users WHERE user_id = ?", (user_id,))
+            row = c.fetchone()
+            conn.close()
+            
+            if not row or row[0] != "waiting_broadcast_media":
+                # 不是在等待广播媒体上传，忽略
+                return
+        except:
+            return
+        
+        # 检查是否有待处理的广播任务
+        if user_id not in self.pending_broadcasts:
+            self.safe_send_message(update, "❌ 没有待处理的广播任务")
+            return
+        
+        task = self.pending_broadcasts[user_id]
+        
+        # 获取最大尺寸的图片
+        photo = update.message.photo[-1]
+        
+        # 保存图片 file_id
+        task['media_file_id'] = photo.file_id
+        task['media_type'] = 'photo'
+        
+        # 清空用户状态
+        self.db.save_user(user_id, "", "", "")
+        
+        # 发送成功消息并返回编辑器
+        self.safe_send_message(
+            update,
+            "✅ <b>图片已保存</b>\n\n返回编辑器继续设置",
+            'HTML'
+        )
+        
+        # 模拟 query 对象返回编辑器
+        class FakeQuery:
+            def __init__(self, user, chat):
+                self.from_user = user
+                self.message = type('obj', (object,), {'chat_id': chat.id, 'message_id': None})()
+            def answer(self):
+                pass
+        
+        fake_query = FakeQuery(update.effective_user, update.effective_chat)
+        
+        # 发送新消息显示编辑器
+        self.show_broadcast_wizard_editor_as_new_message(update, context)
+    
+    def show_broadcast_wizard_editor_as_new_message(self, update, context):
+        """以新消息的形式显示广播编辑器"""
+        user_id = update.effective_user.id
+        
+        if user_id not in self.pending_broadcasts:
+            return
+        
+        task = self.pending_broadcasts[user_id]
+        
+        # 状态指示器
+        media_status = "✅" if task.get('media_file_id') else "⚪"
+        text_status = "✅" if task.get('content') else "⚪"
+        buttons_status = "✅" if task.get('buttons') else "⚪"
+        
+        text = f"""
+<b>📝 创建群发通知</b>
+
+<b>📊 当前状态</b>
+{media_status} 媒体: {'已设置' if task.get('media_file_id') else '未设置'}
+{text_status} 文本: {'已设置' if task.get('content') else '未设置'}
+{buttons_status} 按钮: {len(task.get('buttons', []))} 个
+
+<b>💡 操作提示</b>
+• 文本为必填项
+• 媒体和按钮为可选项
+• 设置完成后点击"下一步"
+        """
+        
+        # 两栏布局按钮
+        keyboard = InlineKeyboardMarkup([
+            # 第一行：媒体操作
+            [
+                InlineKeyboardButton("📸 媒体", callback_data="broadcast_media"),
+                InlineKeyboardButton("👁️ 查看", callback_data="broadcast_media_view"),
+                InlineKeyboardButton("🗑️ 清除", callback_data="broadcast_media_clear")
+            ],
+            # 第二行：文本操作
+            [
+                InlineKeyboardButton("📝 文本", callback_data="broadcast_text"),
+                InlineKeyboardButton("👁️ 查看", callback_data="broadcast_text_view")
+            ],
+            # 第三行：按钮操作
+            [
+                InlineKeyboardButton("🔘 按钮", callback_data="broadcast_buttons"),
+                InlineKeyboardButton("👁️ 查看", callback_data="broadcast_buttons_view"),
+                InlineKeyboardButton("🗑️ 清除", callback_data="broadcast_buttons_clear")
+            ],
+            # 第四行：预览和导航
+            [
+                InlineKeyboardButton("🔍 完整预览", callback_data="broadcast_preview")
+            ],
+            [
+                InlineKeyboardButton("🔙 返回", callback_data="broadcast_cancel"),
+                InlineKeyboardButton("➡️ 下一步", callback_data="broadcast_next")
+            ]
+        ])
+        
+        self.safe_send_message(update, text, 'HTML', keyboard)
+    
     def handle_text(self, update: Update, context: CallbackContext):
         user_id = update.effective_user.id
         text = update.message.text
@@ -8619,15 +8738,115 @@ class EnhancedBot:
     # 广播消息功能
     # ================================
     
+    def handle_broadcast_callbacks_router(self, update: Update, context: CallbackContext):
+        """
+        专用广播回调路由器 - 处理所有 broadcast_* 回调
+        注册为独立的 CallbackQueryHandler，优先级高于通用处理器
+        """
+        query = update.callback_query
+        data = query.data
+        user_id = query.from_user.id
+        
+        # 始终先调用 query.answer() 避免 Telegram 超时和加载动画
+        try:
+            query.answer()
+        except Exception as e:
+            print(f"⚠️ query.answer() 失败: {e}")
+        
+        # 权限检查
+        if not self.db.is_admin(user_id):
+            try:
+                query.answer("❌ 仅管理员可访问广播功能", show_alert=True)
+            except:
+                pass
+            return
+        
+        # 分发表：将所有 broadcast_* 回调映射到对应的处理方法
+        dispatch_table = {
+            # 主菜单和向导
+            "broadcast_menu": lambda: self.show_broadcast_menu(query),
+            "broadcast_create": lambda: self.start_broadcast_wizard(query, update, context),
+            "broadcast_history": lambda: self.show_broadcast_history(query),
+            "broadcast_cancel": lambda: self.cancel_broadcast(query, user_id),
+            "broadcast_edit": lambda: self.restart_broadcast_wizard(query, update, context),
+            "broadcast_confirm_send": lambda: self.start_broadcast_sending(query, update, context),
+            
+            # 媒体操作
+            "broadcast_media": lambda: self.handle_broadcast_media(query, update, context),
+            "broadcast_media_view": lambda: self.handle_broadcast_media_view(query, update, context),
+            "broadcast_media_clear": lambda: self.handle_broadcast_media_clear(query, update, context),
+            
+            # 文本操作
+            "broadcast_text": lambda: self.handle_broadcast_text(query, update, context),
+            "broadcast_text_view": lambda: self.handle_broadcast_text_view(query, update, context),
+            
+            # 按钮操作
+            "broadcast_buttons": lambda: self.handle_broadcast_buttons(query, update, context),
+            "broadcast_buttons_view": lambda: self.handle_broadcast_buttons_view(query, update, context),
+            "broadcast_buttons_clear": lambda: self.handle_broadcast_buttons_clear(query, update, context),
+            
+            # 导航
+            "broadcast_preview": lambda: self.handle_broadcast_preview(query, update, context),
+            "broadcast_back": lambda: self.handle_broadcast_back(query, update, context),
+            "broadcast_next": lambda: self.handle_broadcast_next(query, update, context),
+        }
+        
+        # 处理简单的固定回调
+        if data in dispatch_table:
+            try:
+                dispatch_table[data]()
+            except Exception as e:
+                print(f"❌ 广播回调处理失败 [{data}]: {e}")
+                import traceback
+                traceback.print_exc()
+                try:
+                    self.safe_edit_message(query, f"❌ 操作失败: {str(e)[:100]}")
+                except:
+                    pass
+            return
+        
+        # 处理带参数的回调（历史详情、目标选择等）
+        try:
+            if data.startswith("broadcast_history_detail_"):
+                broadcast_id = int(data.split("_")[-1])
+                self.show_broadcast_detail(query, broadcast_id)
+            elif data.startswith("broadcast_target_"):
+                target = data.split("_", 2)[-1]  # 支持 broadcast_target_active_7d 这种格式
+                self.handle_broadcast_target_selection(query, update, context, target)
+            elif data.startswith("broadcast_alert_"):
+                # 广播消息中的自定义回调按钮
+                self.handle_broadcast_alert_button(query, data)
+            else:
+                print(f"⚠️ 未识别的广播回调: {data}")
+                try:
+                    query.answer("⚠️ 未识别的操作", show_alert=True)
+                except:
+                    pass
+        except Exception as e:
+            print(f"❌ 广播回调处理失败 [{data}]: {e}")
+            import traceback
+            traceback.print_exc()
+            try:
+                self.safe_edit_message(query, f"❌ 操作失败: {str(e)[:100]}")
+            except:
+                pass
+    
     def handle_broadcast_callbacks(self, update, context, query, data):
-        """处理广播消息相关回调"""
+        """
+        旧版广播回调处理器 - 保持向后兼容
+        现在通过 handle_broadcast_callbacks_router 调用
+        """
         user_id = query.from_user.id
         
         # 权限检查
         if not self.db.is_admin(user_id):
-            query.answer("❌ 仅管理员可访问广播功能")
+            try:
+                query.answer("❌ 仅管理员可访问广播功能", show_alert=True)
+            except:
+                pass
             return
         
+        # 调用新的路由器（去掉 query.answer，因为路由器已经处理）
         if data == "broadcast_menu":
             self.show_broadcast_menu(query)
         elif data == "broadcast_create":
@@ -8649,13 +8868,17 @@ class EnhancedBot:
     
     def show_broadcast_menu(self, query):
         """显示广播菜单"""
-        query.answer()
+        try:
+            query.answer()
+        except:
+            pass
         
         text = """
 <b>📢 群发通知管理</b>
 
 <b>💡 功能说明</b>
 • 支持HTML格式内容（粗体、斜体、链接等）
+• 支持单张图片 + 文本组合
 • 可添加自定义按钮（URL或回调）
 • 智能节流避免触发限制
 • 实时进度显示
@@ -8673,44 +8896,448 @@ class EnhancedBot:
         
         self.safe_edit_message(query, text, 'HTML', keyboard)
     
-    def start_broadcast_wizard(self, query, update, context):
-        """开始广播创建向导 - 步骤1：输入标题"""
+    # ================================
+    # 广播向导 - 新增媒体/文本/按钮操作方法
+    # ================================
+    
+    def handle_broadcast_media(self, query, update, context):
+        """处理媒体设置"""
         user_id = query.from_user.id
-        query.answer()
         
-        # 初始化广播任务
-        self.pending_broadcasts[user_id] = {
-            'step': 'title',
-            'started_at': time.time(),
-            'title': '',
-            'content': '',
-            'buttons': [],
-            'target': '',
-            'preview_message_id': None,
-            'broadcast_id': None
-        }
+        if user_id not in self.pending_broadcasts:
+            self.safe_edit_message(query, "❌ 没有待处理的广播任务")
+            return
+        
+        task = self.pending_broadcasts[user_id]
         
         # 更新用户状态
         self.db.save_user(
             user_id,
             query.from_user.username or "",
             query.from_user.first_name or "",
-            "waiting_broadcast_title"
+            "waiting_broadcast_media"
         )
         
         text = """
-<b>📝 创建群发通知 - 步骤 1/4</b>
+<b>📸 设置广播媒体</b>
 
-<b>📋 请输入通知标题</b>
+<b>📋 请上传一张图片</b>
 
-• 标题用于识别此次群发
-• 建议不超过80个字符
-• 标题不会显示给用户
+• 支持格式：JPG、PNG、GIF
+• 图片将与文本一起发送
+• 单次广播只支持一张图片
+
+⏰ <i>5分钟内未上传将自动取消</i>
+        """
+        
+        keyboard = InlineKeyboardMarkup([
+            [InlineKeyboardButton("❌ 取消", callback_data="broadcast_cancel")]
+        ])
+        
+        self.safe_edit_message(query, text, 'HTML', keyboard)
+    
+    def handle_broadcast_media_view(self, query, update, context):
+        """查看当前设置的媒体"""
+        user_id = query.from_user.id
+        
+        if user_id not in self.pending_broadcasts:
+            self.safe_edit_message(query, "❌ 没有待处理的广播任务")
+            return
+        
+        task = self.pending_broadcasts[user_id]
+        
+        if 'media_file_id' not in task or not task['media_file_id']:
+            try:
+                query.answer("⚠️ 尚未设置媒体", show_alert=True)
+            except:
+                pass
+            return
+        
+        # 发送媒体预览
+        try:
+            context.bot.send_photo(
+                chat_id=user_id,
+                photo=task['media_file_id'],
+                caption="📸 当前广播媒体预览"
+            )
+            try:
+                query.answer("✅ 已发送媒体预览")
+            except:
+                pass
+        except Exception as e:
+            try:
+                query.answer(f"❌ 预览失败: {str(e)[:50]}", show_alert=True)
+            except:
+                pass
+    
+    def handle_broadcast_media_clear(self, query, update, context):
+        """清除媒体设置"""
+        user_id = query.from_user.id
+        
+        if user_id not in self.pending_broadcasts:
+            self.safe_edit_message(query, "❌ 没有待处理的广播任务")
+            return
+        
+        task = self.pending_broadcasts[user_id]
+        task['media_file_id'] = None
+        task['media_type'] = None
+        
+        try:
+            query.answer("✅ 已清除媒体设置")
+        except:
+            pass
+        
+        # 返回编辑界面
+        self.show_broadcast_wizard_editor(query, update, context)
+    
+    def handle_broadcast_text(self, query, update, context):
+        """处理文本设置"""
+        user_id = query.from_user.id
+        
+        if user_id not in self.pending_broadcasts:
+            self.safe_edit_message(query, "❌ 没有待处理的广播任务")
+            return
+        
+        task = self.pending_broadcasts[user_id]
+        
+        # 更新用户状态
+        self.db.save_user(
+            user_id,
+            query.from_user.username or "",
+            query.from_user.first_name or "",
+            "waiting_broadcast_content"
+        )
+        
+        text = """
+<b>📝 设置广播文本</b>
+
+<b>📄 请输入广播内容</b>
+
+• 支持HTML格式：
+  <code>&lt;b&gt;粗体&lt;/b&gt;</code>
+  <code>&lt;i&gt;斜体&lt;/i&gt;</code>
+  <code>&lt;a href="URL"&gt;链接&lt;/a&gt;</code>
+  <code>&lt;code&gt;代码&lt;/code&gt;</code>
 
 ⏰ <i>5分钟内未输入将自动取消</i>
         """
         
+        keyboard = InlineKeyboardMarkup([
+            [InlineKeyboardButton("❌ 取消", callback_data="broadcast_cancel")]
+        ])
+        
+        self.safe_edit_message(query, text, 'HTML', keyboard)
+    
+    def handle_broadcast_text_view(self, query, update, context):
+        """查看当前设置的文本"""
+        user_id = query.from_user.id
+        
+        if user_id not in self.pending_broadcasts:
+            self.safe_edit_message(query, "❌ 没有待处理的广播任务")
+            return
+        
+        task = self.pending_broadcasts[user_id]
+        
+        if not task.get('content'):
+            try:
+                query.answer("⚠️ 尚未设置文本内容", show_alert=True)
+            except:
+                pass
+            return
+        
+        # 显示文本预览
+        preview = task['content'][:500]
+        if len(task['content']) > 500:
+            preview += "\n\n<i>... (内容过长，已截断)</i>"
+        
+        text = f"""
+<b>📄 文本内容预览</b>
+
+{preview}
+
+<b>字符数:</b> {len(task['content'])}
+        """
+        
         self.safe_edit_message(query, text, 'HTML')
+        try:
+            query.answer("✅ 已显示文本预览")
+        except:
+            pass
+    
+    def handle_broadcast_buttons(self, query, update, context):
+        """处理按钮设置"""
+        user_id = query.from_user.id
+        
+        if user_id not in self.pending_broadcasts:
+            self.safe_edit_message(query, "❌ 没有待处理的广播任务")
+            return
+        
+        task = self.pending_broadcasts[user_id]
+        
+        # 更新用户状态
+        self.db.save_user(
+            user_id,
+            query.from_user.username or "",
+            query.from_user.first_name or "",
+            "waiting_broadcast_buttons"
+        )
+        
+        text = """
+<b>🔘 设置广播按钮</b>
+
+<b>请输入自定义按钮（可选）</b>
+
+• 每行一个按钮（最多4个）
+• URL按钮格式：<code>文本|https://example.com</code>
+• 回调按钮格式：<code>文本|callback:提示信息</code>
+
+示例：
+<code>官方网站|https://telegram.org
+点我试试|callback:你点击了按钮！</code>
+
+💡 <i>输入"跳过"或"skip"可跳过此步骤</i>
+⏰ <i>5分钟内未输入将自动取消</i>
+        """
+        
+        keyboard = InlineKeyboardMarkup([
+            [InlineKeyboardButton("❌ 取消", callback_data="broadcast_cancel")]
+        ])
+        
+        self.safe_edit_message(query, text, 'HTML', keyboard)
+    
+    def handle_broadcast_buttons_view(self, query, update, context):
+        """查看当前设置的按钮"""
+        user_id = query.from_user.id
+        
+        if user_id not in self.pending_broadcasts:
+            self.safe_edit_message(query, "❌ 没有待处理的广播任务")
+            return
+        
+        task = self.pending_broadcasts[user_id]
+        
+        if not task.get('buttons'):
+            try:
+                query.answer("⚠️ 尚未设置按钮", show_alert=True)
+            except:
+                pass
+            return
+        
+        # 显示按钮列表
+        text = "<b>🔘 按钮列表</b>\n\n"
+        for i, btn in enumerate(task['buttons'], 1):
+            if btn['type'] == 'url':
+                text += f"{i}. {btn['text']} → {btn['url']}\n"
+            else:
+                text += f"{i}. {btn['text']} (回调)\n"
+        
+        self.safe_edit_message(query, text, 'HTML')
+        try:
+            query.answer(f"✅ 共 {len(task['buttons'])} 个按钮")
+        except:
+            pass
+    
+    def handle_broadcast_buttons_clear(self, query, update, context):
+        """清除按钮设置"""
+        user_id = query.from_user.id
+        
+        if user_id not in self.pending_broadcasts:
+            self.safe_edit_message(query, "❌ 没有待处理的广播任务")
+            return
+        
+        task = self.pending_broadcasts[user_id]
+        task['buttons'] = []
+        
+        try:
+            query.answer("✅ 已清除所有按钮")
+        except:
+            pass
+        
+        # 返回编辑界面
+        self.show_broadcast_wizard_editor(query, update, context)
+    
+    def handle_broadcast_preview(self, query, update, context):
+        """显示完整预览"""
+        user_id = query.from_user.id
+        
+        if user_id not in self.pending_broadcasts:
+            self.safe_edit_message(query, "❌ 没有待处理的广播任务")
+            return
+        
+        task = self.pending_broadcasts[user_id]
+        
+        # 检查必填项
+        if not task.get('content'):
+            try:
+                query.answer("⚠️ 请先设置文本内容", show_alert=True)
+            except:
+                pass
+            return
+        
+        # 发送预览消息
+        try:
+            # 构建按钮
+            keyboard = None
+            if task.get('buttons'):
+                button_rows = []
+                for btn in task['buttons']:
+                    if btn['type'] == 'url':
+                        button_rows.append([InlineKeyboardButton(btn['text'], url=btn['url'])])
+                    else:
+                        button_rows.append([InlineKeyboardButton(btn['text'], callback_data=btn['data'])])
+                keyboard = InlineKeyboardMarkup(button_rows)
+            
+            # 发送预览
+            if task.get('media_file_id'):
+                context.bot.send_photo(
+                    chat_id=user_id,
+                    photo=task['media_file_id'],
+                    caption=f"<b>📢 预览</b>\n\n{task['content']}",
+                    parse_mode='HTML',
+                    reply_markup=keyboard
+                )
+            else:
+                context.bot.send_message(
+                    chat_id=user_id,
+                    text=f"<b>📢 预览</b>\n\n{task['content']}",
+                    parse_mode='HTML',
+                    reply_markup=keyboard
+                )
+            
+            try:
+                query.answer("✅ 已发送预览")
+            except:
+                pass
+        except Exception as e:
+            try:
+                query.answer(f"❌ 预览失败: {str(e)[:50]}", show_alert=True)
+            except:
+                pass
+    
+    def handle_broadcast_back(self, query, update, context):
+        """返回上一步"""
+        user_id = query.from_user.id
+        
+        if user_id not in self.pending_broadcasts:
+            self.safe_edit_message(query, "❌ 没有待处理的广播任务")
+            return
+        
+        # 返回编辑界面
+        self.show_broadcast_wizard_editor(query, update, context)
+    
+    def handle_broadcast_next(self, query, update, context):
+        """下一步：选择目标"""
+        user_id = query.from_user.id
+        
+        if user_id not in self.pending_broadcasts:
+            self.safe_edit_message(query, "❌ 没有待处理的广播任务")
+            return
+        
+        task = self.pending_broadcasts[user_id]
+        
+        # 检查必填项
+        if not task.get('content'):
+            try:
+                query.answer("⚠️ 请先设置文本内容", show_alert=True)
+            except:
+                pass
+            return
+        
+        # 进入目标选择
+        self.show_target_selection(update, context, user_id)
+    
+    def handle_broadcast_alert_button(self, query, data):
+        """处理广播消息中的自定义回调按钮"""
+        # 从广播任务中查找对应的提示信息
+        # 这里简化处理，直接显示通用提示
+        try:
+            query.answer("✨ 感谢您的关注！", show_alert=True)
+        except:
+            pass
+    
+    def show_broadcast_wizard_editor(self, query, update, context):
+        """显示广播编辑器 - 两栏布局的 zh-CN UI"""
+        user_id = query.from_user.id
+        
+        if user_id not in self.pending_broadcasts:
+            self.safe_edit_message(query, "❌ 没有待处理的广播任务")
+            return
+        
+        task = self.pending_broadcasts[user_id]
+        
+        # 状态指示器
+        media_status = "✅" if task.get('media_file_id') else "⚪"
+        text_status = "✅" if task.get('content') else "⚪"
+        buttons_status = "✅" if task.get('buttons') else "⚪"
+        
+        text = f"""
+<b>📝 创建群发通知</b>
+
+<b>📊 当前状态</b>
+{media_status} 媒体: {'已设置' if task.get('media_file_id') else '未设置'}
+{text_status} 文本: {'已设置' if task.get('content') else '未设置'}
+{buttons_status} 按钮: {len(task.get('buttons', []))} 个
+
+<b>💡 操作提示</b>
+• 文本为必填项
+• 媒体和按钮为可选项
+• 设置完成后点击"下一步"
+        """
+        
+        # 两栏布局按钮
+        keyboard = InlineKeyboardMarkup([
+            # 第一行：媒体操作
+            [
+                InlineKeyboardButton("📸 媒体", callback_data="broadcast_media"),
+                InlineKeyboardButton("👁️ 查看", callback_data="broadcast_media_view"),
+                InlineKeyboardButton("🗑️ 清除", callback_data="broadcast_media_clear")
+            ],
+            # 第二行：文本操作
+            [
+                InlineKeyboardButton("📝 文本", callback_data="broadcast_text"),
+                InlineKeyboardButton("👁️ 查看", callback_data="broadcast_text_view")
+            ],
+            # 第三行：按钮操作
+            [
+                InlineKeyboardButton("🔘 按钮", callback_data="broadcast_buttons"),
+                InlineKeyboardButton("👁️ 查看", callback_data="broadcast_buttons_view"),
+                InlineKeyboardButton("🗑️ 清除", callback_data="broadcast_buttons_clear")
+            ],
+            # 第四行：预览和导航
+            [
+                InlineKeyboardButton("🔍 完整预览", callback_data="broadcast_preview")
+            ],
+            [
+                InlineKeyboardButton("🔙 返回", callback_data="broadcast_cancel"),
+                InlineKeyboardButton("➡️ 下一步", callback_data="broadcast_next")
+            ]
+        ])
+        
+        self.safe_edit_message(query, text, 'HTML', keyboard)
+    
+    def start_broadcast_wizard(self, query, update, context):
+        """开始广播创建向导 - 新版两栏 UI"""
+        user_id = query.from_user.id
+        try:
+            query.answer()
+        except:
+            pass
+        
+        # 初始化广播任务
+        self.pending_broadcasts[user_id] = {
+            'step': 'editor',
+            'started_at': time.time(),
+            'title': f"广播_{int(time.time())}",  # 自动生成标题
+            'content': '',
+            'buttons': [],
+            'media_file_id': None,
+            'media_type': None,
+            'target': '',
+            'preview_message_id': None,
+            'broadcast_id': None
+        }
+        
+        # 显示编辑器界面
+        self.show_broadcast_wizard_editor(query, update, context)
     
     def handle_broadcast_title_input(self, update, context, user_id, title):
         """处理标题输入"""
@@ -8783,33 +9410,15 @@ class EnhancedBot:
             self.safe_send_message(update, "❌ 内容不能为空，请重新输入")
             return
         
-        # 保存内容并进入下一步
+        # 保存内容
         task['content'] = content
-        task['step'] = 'buttons'
         
-        # 更新状态
-        self.db.save_user(user_id, "", "", "waiting_broadcast_buttons")
+        # 清空用户状态
+        self.db.save_user(user_id, "", "", "")
         
-        text = f"""
-<b>📝 创建群发通知 - 步骤 3/4</b>
-
-✅ 内容已设置
-
-<b>🔘 请输入自定义按钮（可选）</b>
-
-• 每行一个按钮（最多4个）
-• URL按钮格式：<code>文本|https://example.com</code>
-• 回调按钮格式：<code>文本|callback:提示信息</code>
-
-示例：
-<code>官方网站|https://telegram.org
-点我试试|callback:你点击了按钮！</code>
-
-💡 <i>输入"跳过"或"skip"可跳过此步骤</i>
-⏰ <i>5分钟内未输入将自动取消</i>
-        """
-        
-        self.safe_send_message(update, text, 'HTML')
+        # 返回编辑器
+        self.safe_send_message(update, "✅ <b>内容已保存</b>\n\n返回编辑器继续设置", 'HTML')
+        self.show_broadcast_wizard_editor_as_new_message(update, context)
     
     def handle_broadcast_buttons_input(self, update, context, user_id, buttons_text):
         """处理按钮输入"""
@@ -8830,7 +9439,10 @@ class EnhancedBot:
         buttons_text = buttons_text.strip()
         if buttons_text.lower() in ['跳过', 'skip', '']:
             task['buttons'] = []
-            self.show_target_selection(update, context, user_id)
+            # 清空用户状态
+            self.db.save_user(user_id, "", "", "")
+            self.safe_send_message(update, "✅ <b>已跳过按钮设置</b>\n\n返回编辑器继续设置", 'HTML')
+            self.show_broadcast_wizard_editor_as_new_message(update, context)
             return
         
         # 解析按钮
@@ -8879,7 +9491,14 @@ class EnhancedBot:
                     })
         
         task['buttons'] = buttons
-        self.show_target_selection(update, context, user_id)
+        
+        # 清空用户状态
+        self.db.save_user(user_id, "", "", "")
+        
+        # 返回编辑器
+        self.safe_send_message(update, f"✅ <b>已保存 {len(buttons)} 个按钮</b>\n\n返回编辑器继续设置", 'HTML')
+        self.show_broadcast_wizard_editor_as_new_message(update, context)
+    
     
     def show_target_selection(self, update, context, user_id):
         """显示目标用户选择"""
