@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 """
 Telegram账号检测机器人 - V8.0
-账号拆分完整版
+管理用户列表完整版
 """
 
 # 放在所有 import 附近（顶层，只执行一次）
@@ -1261,7 +1261,172 @@ class Database:
         except Exception as e:
             print(f"❌ 设置代理开关失败: {e}")
             return False
-    
+    def get_user_statistics(self) -> Dict[str, Any]:
+        """获取用户统计信息"""
+        try:
+            conn = sqlite3.connect(self.db_name)
+            c = conn.cursor()
+            
+            # 总用户数
+            c.execute("SELECT COUNT(*) FROM users")
+            total_users = c.fetchone()[0]
+            
+            # 今日活跃用户
+            today = datetime.now().strftime('%Y-%m-%d')
+            c.execute("SELECT COUNT(*) FROM users WHERE last_active LIKE ?", (f"{today}%",))
+            today_active = c.fetchone()[0]
+            
+            # 本周活跃用户
+            week_ago = (datetime.now() - timedelta(days=7)).strftime('%Y-%m-%d')
+            c.execute("SELECT COUNT(*) FROM users WHERE last_active >= ?", (week_ago,))
+            week_active = c.fetchone()[0]
+            
+            # 会员统计
+            c.execute("SELECT COUNT(*) FROM memberships WHERE level = '体验会员'")
+            trial_members = c.fetchone()[0]
+            
+            # 有效会员（未过期）
+            now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+            c.execute("SELECT COUNT(*) FROM memberships WHERE trial_expiry_time > ?", (now,))
+            active_members = c.fetchone()[0]
+            
+            # 最近注册用户（7天内）
+            c.execute("SELECT COUNT(*) FROM users WHERE register_time >= ?", (week_ago,))
+            recent_users = c.fetchone()[0]
+            
+            conn.close()
+            
+            return {
+                'total_users': total_users,
+                'today_active': today_active,
+                'week_active': week_active,
+                'trial_members': trial_members,
+                'active_members': active_members,
+                'recent_users': recent_users
+            }
+        except Exception as e:
+            print(f"❌ 获取用户统计失败: {e}")
+            return {}
+
+    def get_recent_users(self, limit: int = 20) -> List[Tuple]:
+        """获取最近注册的用户"""
+        try:
+            conn = sqlite3.connect(self.db_name)
+            c = conn.cursor()
+            c.execute("""
+                SELECT user_id, username, first_name, register_time, last_active, status
+                FROM users 
+                ORDER BY register_time DESC 
+                LIMIT ?
+            """, (limit,))
+            result = c.fetchall()
+            conn.close()
+            return result
+        except Exception as e:
+            print(f"❌ 获取最近用户失败: {e}")
+            return []
+
+    def get_active_users(self, days: int = 7, limit: int = 50) -> List[Tuple]:
+        """获取活跃用户"""
+        try:
+            conn = sqlite3.connect(self.db_name)
+            c = conn.cursor()
+            cutoff_date = (datetime.now() - timedelta(days=days)).strftime('%Y-%m-%d %H:%M:%S')
+            c.execute("""
+                SELECT user_id, username, first_name, register_time, last_active, status
+                FROM users 
+                WHERE last_active >= ?
+                ORDER BY last_active DESC 
+                LIMIT ?
+            """, (cutoff_date, limit))
+            result = c.fetchall()
+            conn.close()
+            return result
+        except Exception as e:
+            print(f"❌ 获取活跃用户失败: {e}")
+            return []
+
+    def search_user(self, query: str) -> List[Tuple]:
+        """搜索用户（按ID、用户名、昵称）"""
+        try:
+            conn = sqlite3.connect(self.db_name)
+            c = conn.cursor()
+            
+            # 尝试按用户ID搜索
+            if query.isdigit():
+                c.execute("""
+                    SELECT user_id, username, first_name, register_time, last_active, status
+                    FROM users 
+                    WHERE user_id = ?
+                """, (int(query),))
+                result = c.fetchall()
+                if result:
+                    conn.close()
+                    return result
+            
+            # 按用户名和昵称模糊搜索
+            like_query = f"%{query}%"
+            c.execute("""
+                SELECT user_id, username, first_name, register_time, last_active, status
+                FROM users 
+                WHERE username LIKE ? OR first_name LIKE ?
+                ORDER BY last_active DESC
+                LIMIT 20
+            """, (like_query, like_query))
+            result = c.fetchall()
+            conn.close()
+            return result
+        except Exception as e:
+            print(f"❌ 搜索用户失败: {e}")
+            return []
+
+    def get_user_membership_info(self, user_id: int) -> Dict[str, Any]:
+        """获取用户的详细会员信息"""
+        try:
+            conn = sqlite3.connect(self.db_name)
+            c = conn.cursor()
+            
+            # 获取用户基本信息
+            c.execute("SELECT username, first_name, register_time, last_active, status FROM users WHERE user_id = ?", (user_id,))
+            user_info = c.fetchone()
+            
+            if not user_info:
+                conn.close()
+                return {}
+            
+            # 获取会员信息
+            c.execute("SELECT level, trial_expiry_time, created_at FROM memberships WHERE user_id = ?", (user_id,))
+            membership_info = c.fetchone()
+            
+            conn.close()
+            
+            result = {
+                'user_id': user_id,
+                'username': user_info[0] or '',
+                'first_name': user_info[1] or '',
+                'register_time': user_info[2] or '',
+                'last_active': user_info[3] or '',
+                'status': user_info[4] or '',
+                'is_admin': self.is_admin(user_id)
+            }
+            
+            if membership_info:
+                result.update({
+                    'membership_level': membership_info[0],
+                    'expiry_time': membership_info[1],
+                    'membership_created': membership_info[2]
+                })
+            else:
+                result.update({
+                    'membership_level': '无会员',
+                    'expiry_time': '',
+                    'membership_created': ''
+                })
+            
+            return result
+        except Exception as e:
+            print(f"❌ 获取用户会员信息失败: {e}")
+            return {}    
     def get_proxy_setting_info(self) -> Tuple[bool, str, Optional[int]]:
         """获取代理设置详细信息"""
         try:
@@ -4468,7 +4633,6 @@ class EnhancedBot:
 📡 <b>代理状态</b>
 • 代理模式: {'🟢启用' if self.proxy_manager.is_proxy_mode_active(self.db) else '🔴本地连接'}
 • 代理数量: {len(self.proxy_manager.proxies)}个
-
 • 当前时间: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
         """
         
@@ -5541,12 +5705,6 @@ class EnhancedBot:
 • 代理模式: {'🟢启用' if self.proxy_manager.is_proxy_mode_active(self.db) else '🔴本地连接'}
 • 代理数量: {len(self.proxy_manager.proxies)}个
 • 快速模式: {'🟢开启' if config.PROXY_FAST_MODE else '🔴关闭'}
-• 并发数量: {config.PROXY_CHECK_CONCURRENT if config.PROXY_FAST_MODE else config.MAX_CONCURRENT_CHECKS}个
-
-⚡ <b>速度优化</b>
-• 检测超时: {config.PROXY_CHECK_TIMEOUT if config.PROXY_FAST_MODE else config.CHECK_TIMEOUT}秒
-• 智能重试: {config.PROXY_RETRY_COUNT}次
-• 自动清理: {'🟢启用' if config.PROXY_AUTO_CLEANUP else '🔴关闭'}
 • 当前时间: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
             """
             
@@ -5605,6 +5763,25 @@ class EnhancedBot:
             thread = threading.Thread(target=process_test)
             thread.start()
             self.safe_edit_message(query, "🧪 开始测试代理（仅测试不清理）...")
+        elif data == "admin_users":
+            self.handle_admin_users(query)
+        elif data == "admin_stats":
+            self.handle_admin_stats(query)
+        elif data == "admin_manage":
+            self.handle_admin_manage(query)
+        elif data == "admin_search":
+            self.handle_admin_search(query)
+        elif data == "admin_recent":
+            self.handle_admin_recent(query)
+        elif data.startswith("user_detail_"):
+            user_id_to_view = int(data.split("_")[2])
+            self.handle_user_detail(query, user_id_to_view)
+        elif data.startswith("grant_membership_"):
+            user_id_to_grant = int(data.split("_")[2])
+            self.handle_grant_membership(query, user_id_to_grant)
+        elif data.startswith("make_admin_"):
+            user_id_to_make = int(data.split("_")[2])
+            self.handle_make_admin(query, user_id_to_make)        
         elif data.startswith("status_") or data.startswith("count_"):
             query.answer("ℹ️ 这是状态信息")
     
@@ -5835,6 +6012,7 @@ class EnhancedBot:
 • 版本: 8.0 (完整版)
 • 状态: ✅正常运行
 • 当前时间: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
+
 """
         
         self.safe_edit_message(query, status_text, 'HTML')
@@ -5847,32 +6025,433 @@ class EnhancedBot:
             query.answer("❌ 仅管理员可访问")
             return
         
-        # 获取管理员统计信息
-        admins = self.db.get_all_admins()
-        admin_count = len(admins) if admins else 0
+        # 获取统计信息
+        stats = self.db.get_user_statistics()
+        admin_count = len(self.db.get_all_admins()) if self.db.get_all_admins() else 0
         
         admin_text = f"""
 <b>👑 管理员控制面板</b>
 
-<b>📊 管理员系统状态</b>
-• 当前管理员: {admin_count}个
+<b>📊 系统统计</b>
+• 总用户数: {stats.get('total_users', 0)}
+• 今日活跃: {stats.get('today_active', 0)}
+• 本周活跃: {stats.get('week_active', 0)}
+• 有效会员: {stats.get('active_members', 0)}
+• 体验会员: {stats.get('trial_members', 0)}
+• 近期新用户: {stats.get('recent_users', 0)}
+
+<b>👑 管理员信息</b>
+• 管理员数量: {admin_count}个
 • 您的权限: {'👑 超级管理员' if user_id in config.ADMIN_IDS else '🔧 普通管理员'}
 • 系统时间: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
 
-<b>🔧 管理员命令</b>
-• /addadmin [ID/用户名] - 添加管理员
-• /removeadmin [ID] - 移除管理员
-• /listadmins - 查看管理员列表
-
-<b>📡 代理管理</b>
-• /proxy status - 查看代理状态
-• /proxy reload - 重新加载代理
-
-<b>ℹ️ 使用说明</b>
-直接在聊天中输入上述命令即可执行相应操作
+<b>🔧 快速操作</b>
+点击下方按钮进行管理操作
         """
         
-        self.safe_edit_message(query, admin_text, 'HTML')
+        # 创建管理按钮
+        buttons = [
+            [
+                InlineKeyboardButton("👥 用户管理", callback_data="admin_users"),
+                InlineKeyboardButton("📊 用户统计", callback_data="admin_stats")
+            ],
+            [
+                InlineKeyboardButton("📡 代理管理", callback_data="proxy_panel"),
+                InlineKeyboardButton("👑 管理员管理", callback_data="admin_manage")
+            ],
+            [
+                InlineKeyboardButton("🔍 搜索用户", callback_data="admin_search"),
+                InlineKeyboardButton("📋 最近用户", callback_data="admin_recent")
+            ],
+            [InlineKeyboardButton("🔙 返回主菜单", callback_data="back_to_main")]
+        ]
+        
+        keyboard = InlineKeyboardMarkup(buttons)
+        self.safe_edit_message(query, admin_text, 'HTML', keyboard)
+    def handle_admin_users(self, query):
+        """用户管理界面"""
+        user_id = query.from_user.id
+        
+        if not self.db.is_admin(user_id):
+            query.answer("❌ 仅管理员可访问")
+            return
+        
+        query.answer()
+        
+        # 获取活跃用户列表
+        active_users = self.db.get_active_users(days=7, limit=15)
+        
+        text = "<b>👥 用户管理</b>\n\n<b>📋 最近活跃用户（7天内）</b>\n\n"
+        
+        if active_users:
+            for i, (uid, username, first_name, register_time, last_active, status) in enumerate(active_users[:10], 1):
+                # 检查会员状态
+                is_member, level, _ = self.db.check_membership(uid)
+                member_icon = "🎁" if is_member else "❌"
+                admin_icon = "👑" if self.db.is_admin(uid) else ""
+                
+                display_name = first_name or username or f"用户{uid}"
+                if len(display_name) > 15:
+                    display_name = display_name[:15] + "..."
+                
+                text += f"{i}. {admin_icon}{member_icon} <code>{uid}</code> - {display_name}\n"
+                if last_active:
+                    try:
+                        last_time = datetime.strptime(last_active, '%Y-%m-%d %H:%M:%S')
+                        time_diff = datetime.now() - last_time
+                        if time_diff.days == 0:
+                            time_str = f"{time_diff.seconds//3600}小时前"
+                        else:
+                            time_str = f"{time_diff.days}天前"
+                        text += f"   🕒 {time_str}\n"
+                    except:
+                        text += f"   🕒 {last_active}\n"
+                text += "\n"
+        else:
+            text += "暂无活跃用户\n"
+        
+        text += f"\n📊 <b>图例</b>\n👑 = 管理员 | 🎁 = 会员 | ❌ = 普通用户"
+        
+        buttons = [
+            [
+                InlineKeyboardButton("🔍 搜索用户", callback_data="admin_search"),
+                InlineKeyboardButton("📋 最近注册", callback_data="admin_recent")
+            ],
+            [
+                InlineKeyboardButton("📊 用户统计", callback_data="admin_stats"),
+                InlineKeyboardButton("🔄 刷新列表", callback_data="admin_users")
+            ],
+            [InlineKeyboardButton("🔙 返回管理面板", callback_data="admin_panel")]
+        ]
+        
+        keyboard = InlineKeyboardMarkup(buttons)
+        self.safe_edit_message(query, text, 'HTML', keyboard)
+
+    def handle_admin_stats(self, query):
+        """用户统计界面"""
+        user_id = query.from_user.id
+        
+        if not self.db.is_admin(user_id):
+            query.answer("❌ 仅管理员可访问")
+            return
+        
+        query.answer()
+        
+        stats = self.db.get_user_statistics()
+        
+        # 计算比率
+        total = stats.get('total_users', 0)
+        active_rate = (stats.get('week_active', 0) / total * 100) if total > 0 else 0
+        member_rate = (stats.get('active_members', 0) / total * 100) if total > 0 else 0
+        
+        text = f"""
+<b>📊 用户统计报告</b>
+
+<b>🔢 基础数据</b>
+• 总用户数: {stats.get('total_users', 0)}
+• 今日活跃: {stats.get('today_active', 0)}
+• 本周活跃: {stats.get('week_active', 0)} ({active_rate:.1f}%)
+• 近期新用户: {stats.get('recent_users', 0)} (7天内)
+
+<b>💎 会员数据</b>
+• 有效会员: {stats.get('active_members', 0)} ({member_rate:.1f}%)
+• 体验会员: {stats.get('trial_members', 0)}
+• 转换率: {member_rate:.1f}%
+
+<b>📈 活跃度分析</b>
+• 周活跃率: {active_rate:.1f}%
+• 日活跃率: {(stats.get('today_active', 0) / total * 100) if total > 0 else 0:.1f}%
+
+<b>⏰ 统计时间</b>
+{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
+        """
+        
+        buttons = [
+            [
+                InlineKeyboardButton("👥 用户管理", callback_data="admin_users"),
+                InlineKeyboardButton("🔄 刷新统计", callback_data="admin_stats")
+            ],
+            [InlineKeyboardButton("🔙 返回管理面板", callback_data="admin_panel")]
+        ]
+        
+        keyboard = InlineKeyboardMarkup(buttons)
+        self.safe_edit_message(query, text, 'HTML', keyboard)
+
+    def handle_admin_manage(self, query):
+        """管理员管理界面"""
+        user_id = query.from_user.id
+        
+        if not self.db.is_admin(user_id):
+            query.answer("❌ 仅管理员可访问")
+            return
+        
+        query.answer()
+        
+        # 获取管理员列表
+        admins = self.db.get_all_admins()
+        
+        text = "<b>👑 管理员管理</b>\n\n<b>📋 当前管理员列表</b>\n\n"
+        
+        if admins:
+            for i, (admin_id, username, first_name, added_time) in enumerate(admins, 1):
+                is_super = admin_id in config.ADMIN_IDS
+                admin_type = "👑 超级管理员" if is_super else "🔧 普通管理员"
+                
+                display_name = first_name or username or f"管理员{admin_id}"
+                if len(display_name) > 15:
+                    display_name = display_name[:15] + "..."
+                
+                text += f"{i}. {admin_type}\n"
+                text += f"   ID: <code>{admin_id}</code>\n"
+                text += f"   昵称: {display_name}\n"
+                if username and username != "配置文件管理员":
+                    text += f"   用户名: @{username}\n"
+                text += f"   添加时间: {added_time}\n\n"
+        else:
+            text += "暂无管理员\n"
+        
+        text += f"\n<b>💡 说明</b>\n• 超级管理员来自配置文件\n• 普通管理员可通过命令添加"
+        
+        buttons = [
+            [InlineKeyboardButton("🔙 返回管理面板", callback_data="admin_panel")]
+        ]
+        
+        keyboard = InlineKeyboardMarkup(buttons)
+        self.safe_edit_message(query, text, 'HTML', keyboard)
+
+    def handle_admin_search(self, query):
+        """搜索用户界面"""
+        user_id = query.from_user.id
+        
+        if not self.db.is_admin(user_id):
+            query.answer("❌ 仅管理员可访问")
+            return
+        
+        query.answer()
+        
+        text = """
+<b>🔍 用户搜索</b>
+
+<b>搜索说明：</b>
+• 输入用户ID（纯数字）
+• 输入用户名（@username 或 username）
+• 输入昵称关键词
+
+<b>示例：</b>
+• <code>123456789</code> - 按ID搜索
+• <code>@username</code> - 按用户名搜索
+• <code>张三</code> - 按昵称搜索
+
+请发送要搜索的内容...
+        """
+        
+        # 设置用户状态为等待搜索输入
+        self.db.save_user(
+            user_id,
+            query.from_user.username or "",
+            query.from_user.first_name or "",
+            "waiting_admin_search"
+        )
+        
+        buttons = [
+            [InlineKeyboardButton("❌ 取消搜索", callback_data="admin_users")]
+        ]
+        
+        keyboard = InlineKeyboardMarkup(buttons)
+        self.safe_edit_message(query, text, 'HTML', keyboard)
+
+    def handle_admin_recent(self, query):
+        """最近注册用户"""
+        user_id = query.from_user.id
+        
+        if not self.db.is_admin(user_id):
+            query.answer("❌ 仅管理员可访问")
+            return
+        
+        query.answer()
+        
+        recent_users = self.db.get_recent_users(limit=15)
+        
+        text = "<b>📋 最近注册用户</b>\n\n"
+        
+        if recent_users:
+            for i, (uid, username, first_name, register_time, last_active, status) in enumerate(recent_users, 1):
+                # 检查会员状态
+                is_member, level, _ = self.db.check_membership(uid)
+                member_icon = "🎁" if is_member else "❌"
+                admin_icon = "👑" if self.db.is_admin(uid) else ""
+                
+                display_name = first_name or username or f"用户{uid}"
+                if len(display_name) > 15:
+                    display_name = display_name[:15] + "..."
+                
+                text += f"{i}. {admin_icon}{member_icon} <code>{uid}</code> - {display_name}\n"
+                
+                if register_time:
+                    try:
+                        reg_time = datetime.strptime(register_time, '%Y-%m-%d %H:%M:%S')
+                        time_diff = datetime.now() - reg_time
+                        if time_diff.days == 0:
+                            time_str = f"{time_diff.seconds//3600}小时前注册"
+                        else:
+                            time_str = f"{time_diff.days}天前注册"
+                        text += f"   📅 {time_str}\n"
+                    except:
+                        text += f"   📅 {register_time}\n"
+                text += "\n"
+        else:
+            text += "暂无用户数据\n"
+        
+        text += f"\n📊 <b>图例</b>\n👑 = 管理员 | 🎁 = 会员 | ❌ = 普通用户"
+        
+        buttons = [
+            [
+                InlineKeyboardButton("👥 用户管理", callback_data="admin_users"),
+                InlineKeyboardButton("🔄 刷新列表", callback_data="admin_recent")
+            ],
+            [InlineKeyboardButton("🔙 返回管理面板", callback_data="admin_panel")]
+        ]
+        
+        keyboard = InlineKeyboardMarkup(buttons)
+        self.safe_edit_message(query, text, 'HTML', keyboard)
+
+    def handle_user_detail(self, query, target_user_id: int):
+        """显示用户详细信息"""
+        user_id = query.from_user.id
+        
+        if not self.db.is_admin(user_id):
+            query.answer("❌ 仅管理员可访问")
+            return
+        
+        query.answer()
+        
+        user_info = self.db.get_user_membership_info(target_user_id)
+        
+        if not user_info:
+            self.safe_edit_message(query, f"❌ 找不到用户 {target_user_id}")
+            return
+        
+        # 格式化显示
+        username = user_info.get('username', '')
+        first_name = user_info.get('first_name', '')
+        register_time = user_info.get('register_time', '')
+        last_active = user_info.get('last_active', '')
+        membership_level = user_info.get('membership_level', '')
+        expiry_time = user_info.get('expiry_time', '')
+        is_admin = user_info.get('is_admin', False)
+        
+        # 计算活跃度
+        activity_status = "🔴 从未活跃"
+        if last_active:
+            try:
+                last_time = datetime.strptime(last_active, '%Y-%m-%d %H:%M:%S')
+                time_diff = datetime.now() - last_time
+                if time_diff.days == 0:
+                    activity_status = f"🟢 {time_diff.seconds//3600}小时前活跃"
+                elif time_diff.days <= 7:
+                    activity_status = f"🟡 {time_diff.days}天前活跃"
+                else:
+                    activity_status = f"🔴 {time_diff.days}天前活跃"
+            except:
+                activity_status = f"🔴 {last_active}"
+        
+        # 会员状态
+        member_status = "❌ 无会员"
+        if membership_level and membership_level != "无会员":
+            if expiry_time:
+                try:
+                    expiry_dt = datetime.strptime(expiry_time, '%Y-%m-%d %H:%M:%S')
+                    if expiry_dt > datetime.now():
+                        member_status = f"🎁 {membership_level}（有效至 {expiry_time}）"
+                    else:
+                        member_status = f"⏰ {membership_level}（已过期）"
+                except:
+                    member_status = f"🎁 {membership_level}"
+        
+        text = f"""
+<b>👤 用户详细信息</b>
+
+<b>📋 基本信息</b>
+• 用户ID: <code>{target_user_id}</code>
+• 昵称: {first_name or '未设置'}
+• 用户名: @{username} 
+• 权限: {'👑 管理员' if is_admin else '👤 普通用户'}
+
+<b>📅 时间信息</b>
+• 注册时间: {register_time or '未知'}
+• 最后活跃: {last_active or '从未活跃'}
+• 活跃状态: {activity_status}
+
+<b>💎 会员信息</b>
+• 会员状态: {member_status}
+
+<b>🔧 管理操作</b>
+点击下方按钮进行管理操作
+        """
+        
+        buttons = [
+            [InlineKeyboardButton("🎁 授予体验会员", callback_data=f"grant_membership_{target_user_id}")]
+        ]
+        
+        # 如果不是管理员，显示设为管理员按钮
+        if not is_admin:
+            buttons.append([InlineKeyboardButton("👑 设为管理员", callback_data=f"make_admin_{target_user_id}")])
+        
+        buttons.append([InlineKeyboardButton("🔙 返回", callback_data="admin_users")])
+        
+        keyboard = InlineKeyboardMarkup(buttons)
+        self.safe_edit_message(query, text, 'HTML', keyboard)
+
+    def handle_grant_membership(self, query, target_user_id: int):
+        """授予用户体验会员"""
+        user_id = query.from_user.id
+        
+        if not self.db.is_admin(user_id):
+            query.answer("❌ 仅管理员可访问")
+            return
+        
+        # 检查用户是否存在
+        user_info = self.db.get_user_membership_info(target_user_id)
+        if not user_info:
+            query.answer("❌ 用户不存在")
+            return
+        
+        # 授予体验会员
+        success = self.db.save_membership(target_user_id, "体验会员")
+        
+        if success:
+            query.answer("✅ 体验会员授予成功")
+            # 刷新用户详情页面
+            self.handle_user_detail(query, target_user_id)
+        else:
+            query.answer("❌ 授予失败")
+
+    def handle_make_admin(self, query, target_user_id: int):
+        """设置用户为管理员"""
+        user_id = query.from_user.id
+        
+        if not self.db.is_admin(user_id):
+            query.answer("❌ 仅管理员可访问")
+            return
+        
+        # 检查用户是否存在
+        user_info = self.db.get_user_membership_info(target_user_id)
+        if not user_info:
+            query.answer("❌ 用户不存在")
+            return
+        
+        username = user_info.get('username', '')
+        first_name = user_info.get('first_name', '')
+        
+        # 添加为管理员
+        success = self.db.add_admin(target_user_id, username, first_name, user_id)
+        
+        if success:
+            query.answer("✅ 管理员设置成功")
+            # 刷新用户详情页面
+            self.handle_user_detail(query, target_user_id)
+        else:
+            query.answer("❌ 设置失败")
     def handle_proxy_panel(self, query):
         """代理面板"""
         user_id = query.from_user.id
@@ -7177,7 +7756,78 @@ class EnhancedBot:
                         return
         except Exception as e:
             print(f"❌ 检查分类状态失败: {e}")
-        
+        # 管理员搜索用户
+        if user_status == "waiting_admin_search":
+            if not self.db.is_admin(user_id):
+                self.safe_send_message(update, "❌ 权限不足")
+                return
+            
+            search_query = text.strip()
+            if len(search_query) < 2:
+                self.safe_send_message(update, "❌ 搜索关键词太短，请至少输入2个字符")
+                return
+            
+            # 执行搜索
+            search_results = self.db.search_user(search_query)
+            
+            if not search_results:
+                self.safe_send_message(update, f"🔍 未找到匹配 '{search_query}' 的用户")
+                # 清空状态
+                self.db.save_user(user_id, update.effective_user.username or "", update.effective_user.first_name or "", "")
+                return
+            
+            # 显示搜索结果
+            result_text = f"🔍 <b>搜索结果：'{search_query}'</b>\n\n"
+            
+            for i, (uid, username, first_name, register_time, last_active, status) in enumerate(search_results[:10], 1):
+                is_member, level, _ = self.db.check_membership(uid)
+                member_icon = "🎁" if is_member else "❌"
+                admin_icon = "👑" if self.db.is_admin(uid) else ""
+                
+                display_name = first_name or username or f"用户{uid}"
+                if len(display_name) > 20:
+                    display_name = display_name[:20] + "..."
+                
+                result_text += f"{i}. {admin_icon}{member_icon} <code>{uid}</code>\n"
+                result_text += f"   👤 {display_name}\n"
+                if username:
+                    result_text += f"   📱 @{username}\n"
+                
+                # 活跃状态
+                if last_active:
+                    try:
+                        last_time = datetime.strptime(last_active, '%Y-%m-%d %H:%M:%S')
+                        time_diff = datetime.now() - last_time
+                        if time_diff.days == 0:
+                            result_text += f"   🕒 {time_diff.seconds//3600}小时前活跃\n"
+                        else:
+                            result_text += f"   🕒 {time_diff.days}天前活跃\n"
+                    except:
+                        result_text += f"   🕒 {last_active}\n"
+                else:
+                    result_text += f"   🕒 从未活跃\n"
+                
+                result_text += "\n"
+            
+            if len(search_results) > 10:
+                result_text += f"\n... 还有 {len(search_results) - 10} 个结果未显示"
+            
+            # 创建详情按钮（只显示前5个用户的详情按钮）
+            buttons = []
+            for i, (uid, username, first_name, _, _, _) in enumerate(search_results[:5]):
+                display_name = first_name or username or f"用户{uid}"
+                if len(display_name) > 15:
+                    display_name = display_name[:15] + "..."
+                buttons.append([InlineKeyboardButton(f"📋 {display_name} 详情", callback_data=f"user_detail_{uid}")])
+            
+            buttons.append([InlineKeyboardButton("🔙 返回用户管理", callback_data="admin_users")])
+            
+            keyboard = InlineKeyboardMarkup(buttons)
+            self.safe_send_message(update, result_text, 'HTML', keyboard)
+            
+            # 清空状态
+            self.db.save_user(user_id, update.effective_user.username or "", update.effective_user.first_name or "", "")
+            return        
         # 其他文本消息的处理
         text_lower = text.lower()
         if any(word in text_lower for word in ["你好", "hello", "hi"]):
@@ -7731,7 +8381,7 @@ class EnhancedBot:
             self._classify_cleanup(user_id)
     
     def run(self):
-        print("🚀 启动机器人（功能完善版）...")
+        print("🚀 启动增强版机器人（速度优化版）...")
         print(f"📡 代理模式: {'启用' if config.USE_PROXY else '禁用'}")
         print(f"🔢 可用代理: {len(self.proxy_manager.proxies)}个")
         print(f"⚡ 快速模式: {'开启' if config.PROXY_FAST_MODE else '关闭'}")
@@ -7843,7 +8493,7 @@ def setup_session_directory():
 
 def main():
     print("🔍 Telegram账号检测机器人 V8.0")
-    print("⚡ 功能完整版")
+    print("⚡ 二级密码管理器修复完整版")
     print("=" * 50)
     
     # 设置session目录并清理残留文件
