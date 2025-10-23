@@ -10014,6 +10014,28 @@ class EnhancedBot:
         print("🛑 按 Ctrl+C 停止机器人")
         print("-" * 50)
         
+        # 启动广播超时清理任务
+        def cleanup_expired_broadcasts():
+            while True:
+                try:
+                    time.sleep(60)  # 每分钟检查一次
+                    current_time = time.time()
+                    expired_users = []
+                    
+                    for user_id, task in self.pending_broadcasts.items():
+                        if current_time - task.get('started_at', 0) > 300:  # 5分钟超时
+                            expired_users.append(user_id)
+                    
+                    for user_id in expired_users:
+                        del self.pending_broadcasts[user_id]
+                        self.db.save_user(user_id, "", "", "")
+                        print(f"🧹 清理过期广播任务: user_id={user_id}")
+                except Exception as e:
+                    print(f"⚠️ 广播清理任务错误: {e}")
+        
+        cleanup_thread = threading.Thread(target=cleanup_expired_broadcasts, daemon=True)
+        cleanup_thread.start()
+        
         try:
             self.updater.start_polling()
             self.updater.idle()
