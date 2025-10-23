@@ -20,6 +20,7 @@ class AccountMeta:
 
 class AccountClassifier:
     """账号分类/打包工具：支持 tdata 和 session+json 两种来源"""
+
     def __init__(self) -> None:
         pass
 
@@ -148,22 +149,76 @@ class AccountClassifier:
 
     # -------------- 打包 --------------
     def _zip_bundle(self, items: List[AccountMeta], out_dir: str, display_zip: str) -> str:
+        """
+        将传入的账号条目打成一个 zip 包
+        修复点：
+        - 保留 tdata 完整目录结构：手机号/tdata/Dxxxxxx/...
+        - 对于 .session 同时打入同名 .json（同目录优先，找不到回退 sessions/）
+        """
         os.makedirs(out_dir, exist_ok=True)
         dst = os.path.join(out_dir, display_zip)
+
+        written: set = set()  # 去重，避免重复写同一路径
         with zipfile.ZipFile(dst, "w", compression=zipfile.ZIP_DEFLATED) as zf:
             for it in items:
+                # 账号根目录：优先用 E.164 手机号；没有则用显示名
+                account_root = (it.phone or it.display_name or "").strip() or "account"
+
                 if os.path.isdir(it.path):
-                    # 递归加入目录
-                    root_base = os.path.dirname(it.path)
-                    for rp, _, fns in os.walk(it.path):
+                    base = it.path
+                    base_is_tdata = os.path.basename(base).lower() == "tdata"
+
+                    for rp, _, fns in os.walk(base):
                         for fn in fns:
                             full = os.path.join(rp, fn)
-                            rel = os.path.relpath(full, root_base)
-                            # 保持最上层目录名为 display_name
-                            arcname = os.path.join(it.display_name, os.path.basename(rel))
-                            zf.write(full, arcname=arcname)
+                            rel_from_base = os.path.relpath(full, base)
+                            # 若源就是 tdata 目录，把 tdata 作为一级目录保留
+                            if base_is_tdata:
+                                arc_rel = os.path.join("tdata", rel_from_base)
+                            else:
+                                arc_rel = rel_from_base
+                            arcname = os.path.join(account_root, arc_rel)
+                            if arcname not in written:
+                                zf.write(full, arcname=arcname)
+                                written.add(arcname)
                 else:
-                    zf.write(it.path, arcname=it.display_name)
+                    # 单文件：写入账号根目录
+                    base_name = os.path.basename(it.path)
+                    name_lower = base_name.lower()
+
+                    arc_file = os.path.join(account_root, base_name)
+                    if arc_file not in written:
+                        zf.write(it.path, arcname=arc_file)
+                        written.add(arc_file)
+
+                    # 若是 .session，尝试附带同名 .json
+                    if name_lower.endswith(".session"):
+                        json_name = os.path.splitext(base_name)[0] + ".json"
+                        json_candidates = [
+                            os.path.join(os.path.dirname(it.path), json_name),
+                            os.path.join(os.getcwd(), "sessions", json_name),
+                        ]
+                        for cand in json_candidates:
+                            if os.path.exists(cand):
+                                arc_json = os.path.join(account_root, json_name)
+                                if arc_json not in written:
+                                    zf.write(cand, arcname=arc_json)
+                                    written.add(arc_json)
+                                break
+                    # 若是 .json，也尽量附带同名 .session（健壮性，防止只传了一个）
+                    elif name_lower.endswith(".json"):
+                        ses_name = os.path.splitext(base_name)[0] + ".session"
+                        ses_candidates = [
+                            os.path.join(os.path.dirname(it.path), ses_name),
+                            os.path.join(os.getcwd(), "sessions", ses_name),
+                        ]
+                        for cand in ses_candidates:
+                            if os.path.exists(cand):
+                                arc_ses = os.path.join(account_root, ses_name)
+                                if arc_ses not in written:
+                                    zf.write(cand, arcname=arc_ses)
+                                    written.add(arc_ses)
+                                break
         return dst
 
     # -------------- 对外：按国家拆分 --------------
@@ -176,7 +231,7 @@ class AccountClassifier:
         results: List[Tuple[str, str, int]] = []
         for (name, code), items in groups.items():
             qty = len(items)
-            zip_name = f"{name}+{code}+{qty}.zip"
+            zip_name = f"{name}+{code}_{qty}.zip"
             path = self._zip_bundle(items, out_dir, zip_name)
             results.append((path, zip_name, qty))
         return results
@@ -189,22 +244,48 @@ class AccountClassifier:
         out_dir: str,
         country_label: Optional[Tuple[str, str]] = None
     ) -> List[Tuple[str, str, int]]:
-        """按给定 sizes 依次切分，命名 {国家}+{区号}+{数量}.zip"""
+        """按给定 sizes 依次切分，命名 {国家}+{区号}+{数量}.zip，带序号后缀避免重名覆盖"""
         if country_label is None:
             country_label = self.detect_bundle_country_label(metas)
         name, code = country_label
+
+        os.makedirs(out_dir, exist_ok=True)
 
         res: List[Tuple[str, str, int]] = []
         idx = 0
         metas_sorted = list(metas)
         total = len(metas_sorted)
-        for s in sizes:
+
+        # 判断是否可能发生重名（同一国家/区号，数量重复）
+        sizes_list = list(sizes)
+        need_serial = sizes_list.count(1) > 1 or len(set(sizes_list)) != len(sizes_list)
+
+        batch_no = 0
+        for s in sizes_list:
             if idx >= total:
                 break
             batch = metas_sorted[idx: idx + s]
             real = len(batch)
-            zip_name = f"{name}+{code}+{real}.zip"
-            path = self._zip_bundle(batch, out_dir, zip_name)
-            res.append((path, zip_name, real))
+            if real == 0:
+                break
+
+            batch_no += 1
+            base_name = f"{name}+{code}_{real}.zip"
+            zip_name = base_name
+
+            # 若需要保证唯一性，则追加批次序号
+            if need_serial:
+                zip_name = f"{name}+{code}_{real}--{batch_no}.zip"
+
+            # 若仍存在重名（目录已有同名），继续自增后缀
+            dedup_no = 1
+            final_zip_name = zip_name
+            while os.path.exists(os.path.join(out_dir, final_zip_name)):
+                dedup_no += 1
+                final_zip_name = f"{os.path.splitext(zip_name)[0]}--{dedup_no}.zip"
+
+            path = self._zip_bundle(batch, out_dir, final_zip_name)
+            res.append((path, final_zip_name, real))
             idx += s
+
         return res
