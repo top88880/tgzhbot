@@ -6743,6 +6743,65 @@ class EnhancedBot:
         """处理文件上传"""
         user_id = update.effective_user.id
         document = update.message.document
+        
+        # 检查是否在等待广播媒体（支持image/*文档）
+        try:
+            conn = sqlite3.connect(config.DB_NAME)
+            c = conn.cursor()
+            c.execute("SELECT status FROM users WHERE user_id = ?", (user_id,))
+            row = c.fetchone()
+            user_status = row[0] if row else None
+            conn.close()
+            
+            if user_status == "waiting_broadcast_media":
+                # 处理以文档形式发送的图片
+                if document and document.mime_type and document.mime_type.startswith('image/'):
+                    if user_id not in self.pending_broadcasts:
+                        self.safe_send_message(update, "❌ 会话已过期，请重新开始")
+                        return
+                    
+                    task = self.pending_broadcasts[user_id]
+                    
+                    # 检查超时
+                    if time.time() - task['started_at'] > 300:
+                        del self.pending_broadcasts[user_id]
+                        self.db.save_user(user_id, "", "", "")
+                        self.safe_send_message(update, "❌ 操作超时，请重新开始")
+                        return
+                    
+                    # 下载文档，然后用send_photo发送以获取file_id
+                    try:
+                        file = document.get_file()
+                        file_bytes = file.download_as_bytearray()
+                        
+                        # 发送图片并获取file_id
+                        sent_msg = update.message.bot.send_photo(
+                            chat_id=user_id,
+                            photo=BytesIO(file_bytes),
+                            caption="✅ 已接收图片"
+                        )
+                        
+                        # 获取photo file_id
+                        if sent_msg.photo:
+                            largest_photo = max(sent_msg.photo, key=lambda p: p.file_size or 0)
+                            photo_file_id = largest_photo.file_id
+                            
+                            # 保存到任务
+                            task['media_type'] = 'photo'
+                            task['photo_file_id'] = photo_file_id
+                            task['step'] = 'dashboard'
+                            self.db.save_user(user_id, "", "", "")
+                            
+                            self.safe_send_message(update, "✅ 图片已保存，返回仪表板...")
+                            self.send_dashboard_message(update, user_id)
+                    except Exception as e:
+                        self.safe_send_message(update, f"❌ 处理图片失败: {str(e)}\n💡 请尝试直接发送图片而非文档")
+                    return
+                else:
+                    self.safe_send_message(update, "❌ 请发送图片格式的文件，或以\"图片\"方式发送")
+                    return
+        except Exception as e:
+            print(f"❌ 检查广播媒体状态失败: {e}")
 
         if not document or not document.file_name.lower().endswith('.zip'):
             self.safe_send_message(update, "❌ 请上传ZIP格式的压缩包")
