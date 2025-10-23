@@ -11128,6 +11128,42 @@ class EnhancedBot:
         thread = threading.Thread(target=process_merge, daemon=True)
         thread.start()
     
+    def extract_phone_from_json(self, json_path: str) -> Optional[str]:
+        """从JSON文件中提取手机号"""
+        try:
+            with open(json_path, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+                phone = data.get('phone', '')
+                if phone:
+                    # 清理手机号格式：移除+号和其他非数字字符
+                    phone_clean = ''.join(c for c in phone if c.isdigit())
+                    if phone_clean and len(phone_clean) >= 10:
+                        return phone_clean
+        except Exception as e:
+            print(f"⚠️ 从JSON提取手机号失败 {json_path}: {e}")
+        return None
+    
+    def extract_phone_from_tdata_path(self, account_root: str, tdata_dir_name: str) -> Optional[str]:
+        """从TData目录路径中提取手机号"""
+        try:
+            # 方法1: 检查tdata父目录名是否是手机号
+            parent_dir = os.path.basename(account_root)
+            phone_clean = parent_dir.lstrip('+')
+            if phone_clean.isdigit() and len(phone_clean) >= 10:
+                return phone_clean
+            
+            # 方法2: 检查account_root的上级目录
+            path_parts = account_root.split(os.sep)
+            for part in reversed(path_parts):
+                if not part:
+                    continue
+                phone_clean = part.lstrip('+')
+                if phone_clean.isdigit() and len(phone_clean) >= 10:
+                    return phone_clean
+        except Exception as e:
+            print(f"⚠️ 从TData路径提取手机号失败: {e}")
+        return None
+
     async def process_merge_files(self, update, context, user_id: int):
         """处理账户文件合并 - 解压所有ZIP并递归扫描"""
         if user_id not in self.pending_merge:
@@ -11201,20 +11237,56 @@ class EnhancedBot:
         # 扫描所有解压的内容
         scan_directory(extract_dir)
         
-        # 第三步：创建输出 ZIP 文件
+        # 第三步：提取手机号并去重
+        # 为TData账户提取手机号
+        tdata_with_phones = {}  # phone -> (account_root, tdata_dir_name)
+        tdata_without_phones = []  # 没有手机号的账户
+        
+        for account_root, tdata_dir_name in tdata_accounts:
+            phone = self.extract_phone_from_tdata_path(account_root, tdata_dir_name)
+            if phone:
+                # 去重：如果手机号已存在，保留第一个
+                if phone not in tdata_with_phones:
+                    tdata_with_phones[phone] = (account_root, tdata_dir_name)
+                else:
+                    print(f"⚠️ 发现重复TData账户，手机号: {phone}，已跳过")
+            else:
+                tdata_without_phones.append((account_root, tdata_dir_name))
+        
+        # 为Session+JSON配对提取手机号
+        session_json_with_phones = {}  # phone -> (session_path, json_path)
+        
+        for session_path, json_path, basename in session_json_pairs:
+            phone = self.extract_phone_from_json(json_path)
+            if phone:
+                # 去重：如果手机号已存在，保留第一个
+                if phone not in session_json_with_phones:
+                    session_json_with_phones[phone] = (session_path, json_path)
+                else:
+                    print(f"⚠️ 发现重复Session+JSON，手机号: {phone}，已跳过")
+            else:
+                # 如果JSON中没有手机号，使用basename作为标识
+                if basename not in session_json_with_phones:
+                    session_json_with_phones[basename] = (session_path, json_path)
+        
+        # 第四步：创建输出 ZIP 文件
         result_dir = os.path.join(temp_dir, 'results')
         os.makedirs(result_dir, exist_ok=True)
         
         timestamp = int(time.time())
         zip_files_created = []
         
-        # 打包 TData 账户（规范化结构）
-        if tdata_accounts:
-            tdata_zip_path = os.path.join(result_dir, f'tdata_accounts_{timestamp}.zip')
+        # 统计去重后的数量
+        total_tdata = len(tdata_with_phones) + len(tdata_without_phones)
+        total_session_json = len(session_json_with_phones)
+        duplicates_removed = (len(tdata_accounts) - total_tdata) + (len(session_json_pairs) - total_session_json)
+        
+        # 打包 TData 账户（使用手机号作为目录名）
+        if tdata_with_phones or tdata_without_phones:
+            tdata_zip_path = os.path.join(result_dir, f'tdata_only_{timestamp}.zip')
             with zipfile.ZipFile(tdata_zip_path, 'w', zipfile.ZIP_DEFLATED) as zf:
-                for idx, (account_root, tdata_dir_name) in enumerate(tdata_accounts, 1):
-                    # 规范化：每个账户存储为 account_N/tdata/...
-                    account_name = f'account_{idx}'
+                # 先处理有手机号的账户
+                for phone, (account_root, tdata_dir_name) in tdata_with_phones.items():
                     tdata_full_path = os.path.join(account_root, tdata_dir_name)
                     
                     # 递归添加 tdata 目录下的所有文件
@@ -11223,22 +11295,34 @@ class EnhancedBot:
                             file_path = os.path.join(root, fname)
                             # 计算相对路径
                             rel_path = os.path.relpath(file_path, account_root)
-                            # 规范化为 account_N/tdata/...
+                            # 使用手机号作为目录名: phone/tdata/...
+                            arcname = os.path.join(phone, rel_path)
+                            zf.write(file_path, arcname)
+                
+                # 处理没有手机号的账户（使用account_N命名）
+                for idx, (account_root, tdata_dir_name) in enumerate(tdata_without_phones, 1):
+                    account_name = f'account_{idx}'
+                    tdata_full_path = os.path.join(account_root, tdata_dir_name)
+                    
+                    for root, dirs, filenames in os.walk(tdata_full_path):
+                        for fname in filenames:
+                            file_path = os.path.join(root, fname)
+                            rel_path = os.path.relpath(file_path, account_root)
                             arcname = os.path.join(account_name, rel_path)
                             zf.write(file_path, arcname)
             
-            zip_files_created.append(('TData 账户', tdata_zip_path, len(tdata_accounts)))
+            zip_files_created.append(('TData 账户', tdata_zip_path, total_tdata))
         
-        # 打包 Session+JSON 配对
-        if session_json_pairs:
-            session_json_zip_path = os.path.join(result_dir, f'session_json_pairs_{timestamp}.zip')
+        # 打包 Session+JSON 配对（使用手机号作为文件名）
+        if session_json_with_phones:
+            session_json_zip_path = os.path.join(result_dir, f'session_json_{timestamp}.zip')
             with zipfile.ZipFile(session_json_zip_path, 'w', zipfile.ZIP_DEFLATED) as zf:
-                for session_path, json_path, basename in session_json_pairs:
-                    # 使用原始文件名
-                    zf.write(session_path, os.path.basename(session_path))
-                    zf.write(json_path, os.path.basename(json_path))
+                for phone, (session_path, json_path) in session_json_with_phones.items():
+                    # 使用手机号作为文件名
+                    zf.write(session_path, f'{phone}.session')
+                    zf.write(json_path, f'{phone}.json')
             
-            zip_files_created.append(('Session+JSON 配对', session_json_zip_path, len(session_json_pairs)))
+            zip_files_created.append(('Session+JSON 配对', session_json_zip_path, total_session_json))
         
         # 发送结果
         summary = f"""
@@ -11246,8 +11330,9 @@ class EnhancedBot:
 
 <b>📊 处理结果</b>
 • 解压 ZIP 文件: {len(files)} 个
-• TData 账户: {len(tdata_accounts)} 个
-• Session+JSON 配对: {len(session_json_pairs)} 对
+• TData 账户: {total_tdata} 个
+• Session+JSON 配对: {total_session_json} 对
+• 去重移除: {duplicates_removed} 个
 
 <b>📦 生成文件</b>
         """
