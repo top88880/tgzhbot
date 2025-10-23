@@ -1095,6 +1095,28 @@ class Database:
             )
         """)
         
+        # 兑换码表
+        c.execute("""
+            CREATE TABLE IF NOT EXISTS redeem_codes (
+                code TEXT PRIMARY KEY,
+                level TEXT DEFAULT '会员',
+                days INTEGER NOT NULL,
+                status TEXT DEFAULT 'active',
+                created_by INTEGER,
+                created_at TEXT,
+                redeemed_by INTEGER,
+                redeemed_at TEXT
+            )
+        """)
+        
+        # 迁移：添加expiry_time列到memberships表
+        try:
+            c.execute("ALTER TABLE memberships ADD COLUMN expiry_time TEXT")
+            print("✅ 已添加 memberships.expiry_time 列")
+        except sqlite3.OperationalError:
+            # 列已存在，忽略
+            pass
+        
         conn.commit()
         conn.close()
     
@@ -1138,21 +1160,32 @@ class Database:
             return False
     
     def check_membership(self, user_id: int) -> Tuple[bool, str, str]:
+        # 管理员优先
         if self.is_admin(user_id):
             return True, "管理员", "永久有效"
         
         try:
             conn = sqlite3.connect(self.db_name)
             c = conn.cursor()
-            c.execute("SELECT level, trial_expiry_time FROM memberships WHERE user_id = ?", (user_id,))
+            c.execute("SELECT level, trial_expiry_time, expiry_time FROM memberships WHERE user_id = ?", (user_id,))
             row = c.fetchone()
             conn.close()
             
             if not row:
                 return False, "无会员", "未订阅"
             
-            level, trial_expiry_time = row
+            level, trial_expiry_time, expiry_time = row
             
+            # 优先检查新的expiry_time字段
+            if expiry_time:
+                try:
+                    expiry_dt = datetime.strptime(expiry_time, "%Y-%m-%d %H:%M:%S")
+                    if expiry_dt > datetime.now():
+                        return True, level, expiry_dt.strftime("%Y-%m-%d %H:%M:%S")
+                except:
+                    pass
+            
+            # 兼容旧的trial_expiry_time字段
             if level == "体验会员" and trial_expiry_time:
                 expiry_dt = datetime.strptime(trial_expiry_time, "%Y-%m-%d %H:%M:%S")
                 if expiry_dt > datetime.now():
@@ -1292,6 +1325,146 @@ class Database:
         except Exception as e:
             print(f"❌ 设置代理开关失败: {e}")
             return False
+    
+    def grant_membership_days(self, user_id: int, days: int, level: str = "会员") -> bool:
+        """授予用户会员（天数累加）"""
+        try:
+            conn = sqlite3.connect(self.db_name)
+            c = conn.cursor()
+            now = datetime.now()
+            
+            # 检查是否已有会员记录
+            c.execute("SELECT expiry_time FROM memberships WHERE user_id = ?", (user_id,))
+            row = c.fetchone()
+            
+            if row and row[0]:
+                # 已有到期时间，从到期时间继续累加
+                try:
+                    current_expiry = datetime.strptime(row[0], "%Y-%m-%d %H:%M:%S")
+                    # 如果到期时间在未来，从到期时间累加
+                    if current_expiry > now:
+                        new_expiry = current_expiry + timedelta(days=days)
+                    else:
+                        # 已过期，从当前时间累加
+                        new_expiry = now + timedelta(days=days)
+                except:
+                    new_expiry = now + timedelta(days=days)
+            else:
+                # 没有记录或没有到期时间，从当前时间累加
+                new_expiry = now + timedelta(days=days)
+            
+            c.execute("""
+                INSERT OR REPLACE INTO memberships 
+                (user_id, level, expiry_time, created_at)
+                VALUES (?, ?, ?, ?)
+            """, (user_id, level, new_expiry.strftime("%Y-%m-%d %H:%M:%S"), 
+                  now.strftime("%Y-%m-%d %H:%M:%S")))
+            
+            conn.commit()
+            conn.close()
+            return True
+        except Exception as e:
+            print(f"❌ 授予会员失败: {e}")
+            return False
+    
+    def redeem_code(self, user_id: int, code: str) -> Tuple[bool, str, int]:
+        """兑换卡密"""
+        try:
+            conn = sqlite3.connect(self.db_name)
+            c = conn.cursor()
+            
+            # 查询卡密
+            c.execute("""
+                SELECT code, level, days, status 
+                FROM redeem_codes 
+                WHERE code = ?
+            """, (code.upper(),))
+            row = c.fetchone()
+            
+            if not row:
+                conn.close()
+                return False, "卡密不存在", 0
+            
+            code_val, level, days, status = row
+            
+            # 检查状态
+            if status == 'used':
+                conn.close()
+                return False, "卡密已被使用", 0
+            elif status == 'expired':
+                conn.close()
+                return False, "卡密已过期", 0
+            elif status != 'active':
+                conn.close()
+                return False, "卡密状态无效", 0
+            
+            # 标记为已使用
+            now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            c.execute("""
+                UPDATE redeem_codes 
+                SET status = 'used', redeemed_by = ?, redeemed_at = ?
+                WHERE code = ?
+            """, (user_id, now, code.upper()))
+            
+            conn.commit()
+            conn.close()
+            
+            # 授予会员
+            if self.grant_membership_days(user_id, days, level):
+                return True, f"成功兑换{days}天{level}", days
+            else:
+                return False, "兑换失败，请联系管理员", 0
+                
+        except Exception as e:
+            print(f"❌ 兑换卡密失败: {e}")
+            return False, f"兑换失败: {str(e)}", 0
+    
+    def create_redeem_code(self, level: str, days: int, code: Optional[str], created_by: int) -> Tuple[bool, str, str]:
+        """生成兑换码"""
+        try:
+            conn = sqlite3.connect(self.db_name)
+            c = conn.cursor()
+            
+            # 如果没有提供code，自动生成
+            if not code:
+                # 生成8位大写字母数字组合
+                while True:
+                    code = ''.join(random.choices(string.ascii_uppercase + string.digits, k=8))
+                    # 检查是否已存在
+                    c.execute("SELECT code FROM redeem_codes WHERE code = ?", (code,))
+                    if not c.fetchone():
+                        break
+            else:
+                code = code.upper()[:10]  # 最多10位
+                # 检查是否已存在
+                c.execute("SELECT code FROM redeem_codes WHERE code = ?", (code,))
+                if c.fetchone():
+                    conn.close()
+                    return False, code, "卡密已存在"
+            
+            # 插入卡密
+            now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            c.execute("""
+                INSERT INTO redeem_codes 
+                (code, level, days, status, created_by, created_at)
+                VALUES (?, ?, ?, 'active', ?, ?)
+            """, (code, level, days, created_by, now))
+            
+            conn.commit()
+            conn.close()
+            return True, code, "生成成功"
+            
+        except Exception as e:
+            print(f"❌ 生成卡密失败: {e}")
+            return False, "", f"生成失败: {str(e)}"
+    
+    def get_user_id_by_username(self, username: str) -> Optional[int]:
+        """根据用户名获取用户ID"""
+        user_info = self.get_user_by_username(username)
+        if user_info:
+            return user_info[0]  # user_id是第一个字段
+        return None
+    
     def get_user_statistics(self) -> Dict[str, Any]:
         """获取用户统计信息"""
         try:
@@ -4676,6 +4849,9 @@ class EnhancedBot:
         
         # 广播消息待处理任务
         self.pending_broadcasts: Dict[int, Dict[str, Any]] = {}
+        
+        # 人工开通会员待处理任务
+        self.pending_manual_open: Dict[int, int] = {}
 
         self.updater = Updater(config.TOKEN, use_context=True)
         self.dp = self.updater.dispatcher
@@ -4856,6 +5032,9 @@ class EnhancedBot:
             [
                 InlineKeyboardButton("🔗 API转换", callback_data="api_conversion"),
                 InlineKeyboardButton("📦 账号拆分", callback_data="classify_menu")
+            ],
+            [
+                InlineKeyboardButton("💳 开通/兑换会员", callback_data="vip_menu")
             ],
             [
                 InlineKeyboardButton("ℹ️ 帮助", callback_data="help")
@@ -5988,6 +6167,21 @@ class EnhancedBot:
         elif data.startswith("make_admin_"):
             user_id_to_make = int(data.split("_")[2])
             self.handle_make_admin(query, user_id_to_make)
+        # VIP会员回调
+        elif data == "vip_menu":
+            self.handle_vip_menu(query)
+        elif data == "vip_redeem":
+            self.handle_vip_redeem(query)
+        elif data == "admin_card_menu":
+            self.handle_admin_card_menu(query)
+        elif data.startswith("admin_card_days_"):
+            days = int(data.split("_")[-1])
+            self.handle_admin_card_generate(query, days)
+        elif data == "admin_manual_menu":
+            self.handle_admin_manual_menu(query)
+        elif data.startswith("admin_manual_days_"):
+            days = int(data.split("_")[-1])
+            self.handle_admin_manual_grant(query, context, days)
         # 广播消息回调
         elif data.startswith("broadcast_"):
             self.handle_broadcast_callbacks(update, context, query, data)
@@ -6275,6 +6469,10 @@ class EnhancedBot:
             [
                 InlineKeyboardButton("🔍 搜索用户", callback_data="admin_search"),
                 InlineKeyboardButton("📋 最近用户", callback_data="admin_recent")
+            ],
+            [
+                InlineKeyboardButton("💳 卡密开通", callback_data="admin_card_menu"),
+                InlineKeyboardButton("👤 人工开通", callback_data="admin_manual_menu")
             ],
             [
                 InlineKeyboardButton("📢 群发通知", callback_data="broadcast_menu")
@@ -8004,6 +8202,13 @@ class EnhancedBot:
                 elif user_status == "waiting_broadcast_buttons":
                     self.handle_broadcast_buttons_input(update, context, user_id, text)
                     return
+                # VIP会员相关状态
+                elif user_status == "waiting_redeem_code":
+                    self.handle_redeem_code_input(update, user_id, text)
+                    return
+                elif user_status == "waiting_manual_user":
+                    self.handle_manual_user_input(update, user_id, text)
+                    return
         except Exception as e:
             print(f"❌ 检查广播状态失败: {e}")
         
@@ -8733,6 +8938,421 @@ class EnhancedBot:
             self.safe_send_message(update, f"❌ 拆分失败: {str(e)}")
         finally:
             self._classify_cleanup(user_id)
+    
+    # ================================
+    # VIP会员功能
+    # ================================
+    
+    def handle_vip_menu(self, query):
+        """显示VIP会员菜单"""
+        user_id = query.from_user.id
+        query.answer()
+        
+        # 获取会员状态
+        is_member, level, expiry = self.db.check_membership(user_id)
+        
+        if self.db.is_admin(user_id):
+            member_status = "👑 管理员（永久有效）"
+        elif is_member:
+            member_status = f"💎 {level}\n• 到期时间: {expiry}"
+        else:
+            member_status = "❌ 暂无会员"
+        
+        text = f"""
+<b>💳 会员中心</b>
+
+<b>📊 当前状态</b>
+{member_status}
+
+<b>💡 功能说明</b>
+• 兑换卡密即可开通会员
+• 会员时长自动累加
+• 支持多次兑换叠加
+
+<b>🎯 操作选项</b>
+请选择您要执行的操作
+        """
+        
+        keyboard = InlineKeyboardMarkup([
+            [InlineKeyboardButton("🎟️ 兑换卡密", callback_data="vip_redeem")],
+            [InlineKeyboardButton("🔙 返回主菜单", callback_data="back_to_main")]
+        ])
+        
+        self.safe_edit_message(query, text, 'HTML', keyboard)
+    
+    def handle_vip_redeem(self, query):
+        """处理兑换卡密"""
+        user_id = query.from_user.id
+        query.answer()
+        
+        # 设置用户状态
+        self.db.save_user(
+            user_id,
+            query.from_user.username or "",
+            query.from_user.first_name or "",
+            "waiting_redeem_code"
+        )
+        
+        text = """
+<b>🎟️ 兑换卡密</b>
+
+<b>📋 请输入卡密（10位以内）</b>
+
+💡 提示：
+• 请输入您获得的卡密
+• 卡密不区分大小写
+• 兑换成功后时长自动累加
+
+⏰ <i>5分钟内未输入将自动取消</i>
+        """
+        
+        keyboard = InlineKeyboardMarkup([
+            [InlineKeyboardButton("❌ 取消", callback_data="vip_menu")]
+        ])
+        
+        self.safe_edit_message(query, text, 'HTML', keyboard)
+    
+    def handle_redeem_code_input(self, update, user_id: int, code: str):
+        """处理用户输入的兑换码"""
+        # 清除状态
+        self.db.save_user(user_id, "", "", "")
+        
+        # 验证兑换码
+        code = code.strip()
+        if len(code) > 10:
+            self.safe_send_message(update, "❌ 卡密长度不能超过10位")
+            return
+        
+        # 执行兑换
+        success, message, days = self.db.redeem_code(user_id, code)
+        
+        if success:
+            # 获取新的会员状态
+            is_member, level, expiry = self.db.check_membership(user_id)
+            
+            text = f"""
+✅ <b>兑换成功！</b>
+
+<b>📋 兑换信息</b>
+• 卡密: <code>{code.upper()}</code>
+• 会员等级: {level}
+• 增加天数: {days}天
+
+<b>💎 当前会员状态</b>
+• 会员等级: {level}
+• 到期时间: {expiry}
+
+感谢您的支持！
+            """
+            
+            keyboard = InlineKeyboardMarkup([
+                [InlineKeyboardButton("🔙 返回主菜单", callback_data="back_to_main")]
+            ])
+            
+            self.safe_send_message(update, text, 'HTML', keyboard)
+        else:
+            text = f"""
+❌ <b>兑换失败</b>
+
+{message}
+
+请检查您的卡密是否正确
+            """
+            
+            keyboard = InlineKeyboardMarkup([
+                [InlineKeyboardButton("🔄 重新兑换", callback_data="vip_redeem")],
+                [InlineKeyboardButton("🔙 返回会员中心", callback_data="vip_menu")]
+            ])
+            
+            self.safe_send_message(update, text, 'HTML', keyboard)
+    
+    def handle_admin_card_menu(self, query):
+        """管理员卡密开通菜单"""
+        user_id = query.from_user.id
+        
+        if not self.db.is_admin(user_id):
+            query.answer("❌ 仅管理员可访问")
+            return
+        
+        query.answer()
+        
+        text = """
+<b>💳 卡密开通</b>
+
+<b>📋 功能说明</b>
+• 选择天数生成卡密
+• 每次生成1个卡密
+• 卡密为8位大写字母数字组合
+• 每个卡密仅可使用一次
+
+<b>🎯 选择有效期</b>
+请选择要生成的卡密有效期
+        """
+        
+        keyboard = InlineKeyboardMarkup([
+            [
+                InlineKeyboardButton("1天", callback_data="admin_card_days_1"),
+                InlineKeyboardButton("7天", callback_data="admin_card_days_7")
+            ],
+            [
+                InlineKeyboardButton("30天", callback_data="admin_card_days_30"),
+                InlineKeyboardButton("60天", callback_data="admin_card_days_60")
+            ],
+            [
+                InlineKeyboardButton("90天", callback_data="admin_card_days_90"),
+                InlineKeyboardButton("360天", callback_data="admin_card_days_360")
+            ],
+            [InlineKeyboardButton("🔙 返回管理面板", callback_data="admin_panel")]
+        ])
+        
+        self.safe_edit_message(query, text, 'HTML', keyboard)
+    
+    def handle_admin_card_generate(self, query, days: int):
+        """管理员生成卡密"""
+        user_id = query.from_user.id
+        
+        if not self.db.is_admin(user_id):
+            query.answer("❌ 仅管理员可访问")
+            return
+        
+        query.answer()
+        
+        # 生成卡密
+        success, code, message = self.db.create_redeem_code("会员", days, None, user_id)
+        
+        if success:
+            text = f"""
+✅ <b>卡密生成成功！</b>
+
+<b>📋 卡密信息</b>
+• 卡密: <code>{code}</code>
+• 等级: 会员
+• 有效期: {days}天
+• 状态: 未使用
+
+<b>💡 提示</b>
+• 请妥善保管卡密
+• 每个卡密仅可使用一次
+• 点击卡密可复制
+            """
+        else:
+            text = f"""
+❌ <b>生成失败</b>
+
+{message}
+            """
+        
+        keyboard = InlineKeyboardMarkup([
+            [InlineKeyboardButton("🔄 继续生成", callback_data="admin_card_menu")],
+            [InlineKeyboardButton("🔙 返回管理面板", callback_data="admin_panel")]
+        ])
+        
+        self.safe_edit_message(query, text, 'HTML', keyboard)
+    
+    def handle_admin_manual_menu(self, query):
+        """管理员人工开通菜单"""
+        user_id = query.from_user.id
+        
+        if not self.db.is_admin(user_id):
+            query.answer("❌ 仅管理员可访问")
+            return
+        
+        query.answer()
+        
+        # 设置用户状态
+        self.db.save_user(
+            user_id,
+            query.from_user.username or "",
+            query.from_user.first_name or "",
+            "waiting_manual_user"
+        )
+        
+        text = """
+<b>👤 人工开通会员</b>
+
+<b>📋 请输入要开通的用户</b>
+
+支持以下格式：
+• 用户ID：<code>123456789</code>
+• 用户名：<code>@username</code> 或 <code>username</code>
+
+<b>💡 提示</b>
+• 用户必须先与机器人交互过
+• 输入后会显示天数选择
+• 会员时长自动累加
+
+⏰ <i>5分钟内未输入将自动取消</i>
+        """
+        
+        keyboard = InlineKeyboardMarkup([
+            [InlineKeyboardButton("❌ 取消", callback_data="admin_panel")]
+        ])
+        
+        self.safe_edit_message(query, text, 'HTML', keyboard)
+    
+    def handle_manual_user_input(self, update, admin_id: int, text: str):
+        """处理管理员输入的用户信息"""
+        # 清除状态
+        self.db.save_user(admin_id, "", "", "")
+        
+        # 解析用户输入
+        text = text.strip()
+        target_user_id = None
+        
+        # 尝试作为用户ID解析
+        if text.isdigit():
+            target_user_id = int(text)
+        else:
+            # 尝试作为用户名解析
+            username = text.replace("@", "")
+            target_user_id = self.db.get_user_id_by_username(username)
+        
+        if not target_user_id:
+            self.safe_send_message(
+                update,
+                "❌ <b>用户不存在</b>\n\n"
+                "该用户未与机器人交互过，请确认：\n"
+                "• 用户ID或用户名正确\n"
+                "• 用户已发送过 /start 命令",
+                'HTML'
+            )
+            return
+        
+        # 获取用户信息
+        user_info = self.db.get_user_membership_info(target_user_id)
+        if not user_info:
+            self.safe_send_message(
+                update,
+                "❌ <b>用户不存在</b>\n\n"
+                "该用户未与机器人交互过",
+                'HTML'
+            )
+            return
+        
+        # 保存到待处理列表
+        self.pending_manual_open[admin_id] = target_user_id
+        
+        # 获取用户会员信息
+        is_member, level, expiry = self.db.check_membership(target_user_id)
+        
+        username = user_info.get('username', '')
+        first_name = user_info.get('first_name', '')
+        display_name = first_name or username or f"用户{target_user_id}"
+        
+        if is_member:
+            member_status = f"💎 {level}\n• 到期: {expiry}"
+        else:
+            member_status = "❌ 暂无会员"
+        
+        text = f"""
+<b>👤 确认用户信息</b>
+
+<b>📋 用户信息</b>
+• 昵称: {display_name}
+• ID: <code>{target_user_id}</code>
+• 用户名: @{username if username else '无'}
+
+<b>💎 当前会员状态</b>
+{member_status}
+
+<b>🎯 选择开通天数</b>
+请选择要为该用户开通的会员天数
+        """
+        
+        keyboard = InlineKeyboardMarkup([
+            [
+                InlineKeyboardButton("1天", callback_data="admin_manual_days_1"),
+                InlineKeyboardButton("7天", callback_data="admin_manual_days_7")
+            ],
+            [
+                InlineKeyboardButton("30天", callback_data="admin_manual_days_30"),
+                InlineKeyboardButton("60天", callback_data="admin_manual_days_60")
+            ],
+            [
+                InlineKeyboardButton("90天", callback_data="admin_manual_days_90"),
+                InlineKeyboardButton("360天", callback_data="admin_manual_days_360")
+            ],
+            [InlineKeyboardButton("❌ 取消", callback_data="admin_panel")]
+        ])
+        
+        self.safe_send_message(update, text, 'HTML', keyboard)
+    
+    def handle_admin_manual_grant(self, query, context, days: int):
+        """管理员执行人工开通"""
+        admin_id = query.from_user.id
+        
+        if not self.db.is_admin(admin_id):
+            query.answer("❌ 仅管理员可访问")
+            return
+        
+        # 检查是否有待处理的用户
+        if admin_id not in self.pending_manual_open:
+            query.answer("❌ 没有待处理的用户")
+            return
+        
+        target_user_id = self.pending_manual_open[admin_id]
+        
+        # 执行授予
+        success = self.db.grant_membership_days(target_user_id, days, "会员")
+        
+        if success:
+            # 获取新的会员状态
+            is_member, level, expiry = self.db.check_membership(target_user_id)
+            
+            # 获取用户信息
+            user_info = self.db.get_user_membership_info(target_user_id)
+            username = user_info.get('username', '')
+            first_name = user_info.get('first_name', '')
+            display_name = first_name or username or f"用户{target_user_id}"
+            
+            text = f"""
+✅ <b>开通成功！</b>
+
+<b>📋 开通信息</b>
+• 目标用户: {display_name}
+• 用户ID: <code>{target_user_id}</code>
+• 增加天数: {days}天
+
+<b>💎 当前会员状态</b>
+• 会员等级: {level}
+• 到期时间: {expiry}
+            """
+            
+            query.answer("✅ 开通成功")
+            
+            # 尝试通知用户
+            try:
+                context.bot.send_message(
+                    chat_id=target_user_id,
+                    text=f"""
+🎉 <b>恭喜！您已获得会员</b>
+
+管理员为您开通了 {days}天 会员
+
+<b>💎 当前会员状态</b>
+• 会员等级: {level}
+• 到期时间: {expiry}
+
+感谢您的支持！
+                    """,
+                    parse_mode='HTML'
+                )
+            except:
+                pass
+        else:
+            text = "❌ <b>开通失败</b>\n\n请稍后重试"
+            query.answer("❌ 开通失败")
+        
+        # 清理待处理任务
+        if admin_id in self.pending_manual_open:
+            del self.pending_manual_open[admin_id]
+        
+        keyboard = InlineKeyboardMarkup([
+            [InlineKeyboardButton("🔄 继续开通", callback_data="admin_manual_menu")],
+            [InlineKeyboardButton("🔙 返回管理面板", callback_data="admin_panel")]
+        ])
+        
+        self.safe_edit_message(query, text, 'HTML', keyboard)
     
     # ================================
     # 广播消息功能
