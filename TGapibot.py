@@ -4866,6 +4866,12 @@ class EnhancedBot:
         
         # 人工开通会员待处理任务
         self.pending_manual_open: Dict[int, int] = {}
+        
+        # 文件重命名待处理任务
+        self.pending_rename: Dict[int, Dict[str, Any]] = {}
+        
+        # 账户合并待处理任务
+        self.pending_merge: Dict[int, Dict[str, Any]] = {}
 
         self.updater = Updater(config.TOKEN, use_context=True)
         self.dp = self.updater.dispatcher
@@ -4973,6 +4979,56 @@ class EnhancedBot:
             print(f"❌ 编辑消息失败: {e}")
             return None
     
+    def sanitize_filename(self, filename: str) -> str:
+        """清理文件名，移除非法字符并限制长度"""
+        # 移除或替换非法字符
+        invalid_chars = '<>:"/\\|?*'
+        for char in invalid_chars:
+            filename = filename.replace(char, '_')
+        
+        # 移除控制字符
+        filename = ''.join(char for char in filename if ord(char) >= 32)
+        
+        # 限制长度（保留扩展名空间）
+        max_length = 200
+        if len(filename) > max_length:
+            filename = filename[:max_length]
+        
+        # 去除首尾空格和点号
+        filename = filename.strip('. ')
+        
+        # 如果文件名为空，使用默认名
+        if not filename:
+            filename = 'unnamed_file'
+        
+        return filename
+    
+    def send_document_safely(self, chat_id: int, file_path: str, caption: str = None, filename: str = None) -> bool:
+        """安全发送文档，处理 RetryAfter 错误"""
+        max_retries = 3
+        retry_count = 0
+        
+        while retry_count < max_retries:
+            try:
+                with open(file_path, 'rb') as doc:
+                    self.updater.bot.send_document(
+                        chat_id=chat_id,
+                        document=doc,
+                        caption=caption,
+                        filename=filename,
+                        parse_mode='HTML'
+                    )
+                return True
+            except RetryAfter as e:
+                print(f"⚠️ 频率限制，等待 {e.retry_after} 秒")
+                time.sleep(e.retry_after + 1)
+                retry_count += 1
+            except Exception as e:
+                print(f"❌ 发送文档失败: {e}")
+                return False
+        
+        return False
+    
     def create_status_count_separate_buttons(self, results: Dict[str, List], processed: int, total: int) -> InlineKeyboardMarkup:
         """创建状态|数量分离按钮布局"""
         buttons = []
@@ -5046,6 +5102,10 @@ class EnhancedBot:
             [
                 InlineKeyboardButton("🔗 API转换", callback_data="api_conversion"),
                 InlineKeyboardButton("📦 账号拆分", callback_data="classify_menu")
+            ],
+            [
+                InlineKeyboardButton("📝 文件重命名", callback_data="rename_start"),
+                InlineKeyboardButton("🧩 账户合并", callback_data="merge_start")
             ],
             [
                 InlineKeyboardButton("💳 开通/兑换会员", callback_data="vip_menu")
@@ -6075,6 +6135,12 @@ class EnhancedBot:
             self.handle_api_conversion(query)
         elif data.startswith("classify_") or data == "classify_menu":
             self.handle_classify_callbacks(update, context, query, data)
+        elif data == "rename_start":
+            self.handle_rename_start(query)
+        elif data == "merge_start":
+            self.handle_merge_start(query)
+        elif data == "merge_finish":
+            self.handle_merge_finish(update, context, query)
         elif query.data == "back_to_main":
             self.show_main_menu(update, user_id)
             # 返回主菜单 - 横排2x2布局
@@ -6906,8 +6972,8 @@ class EnhancedBot:
         user_id = update.effective_user.id
         document = update.message.document
 
-        if not document or not document.file_name.lower().endswith('.zip'):
-            self.safe_send_message(update, "❌ 请上传ZIP格式的压缩包")
+        if not document:
+            self.safe_send_message(update, "❌ 请上传文件")
             return
 
         try:
@@ -6917,7 +6983,7 @@ class EnhancedBot:
             row = c.fetchone()
             conn.close()
 
-            # 放行的状态，新增 waiting_api_file
+            # 放行的状态，新增 waiting_api_file, waiting_rename_file, waiting_merge_files
             if not row or row[0] not in [
                 "waiting_file",
                 "waiting_convert_tdata",
@@ -6925,13 +6991,28 @@ class EnhancedBot:
                 "waiting_2fa_file",
                 "waiting_api_file",
                 "waiting_classify_file",
+                "waiting_rename_file",
+                "waiting_merge_files",
             ]:
-                self.safe_send_message(update, "❌ 请先点击 🚀开始检测、🔄格式转换、🔐修改2FA、🔗API转换 或 📦账号分类 按钮")
+                self.safe_send_message(update, "❌ 请先点击相应的功能按钮")
                 return
 
             user_status = row[0]
         except Exception:
             self.safe_send_message(update, "❌ 系统错误，请重试")
+            return
+        
+        # 文件重命名和账户合并不需要会员权限检查，也不需要ZIP格式检查
+        if user_status == "waiting_rename_file":
+            self.handle_rename_file_upload(update, context, document)
+            return
+        elif user_status == "waiting_merge_files":
+            self.handle_merge_file_upload(update, context, document)
+            return
+        
+        # 其他功能需要ZIP格式
+        if not document.file_name.lower().endswith('.zip'):
+            self.safe_send_message(update, "❌ 请上传ZIP格式的压缩包")
             return
 
         is_member, _, _ = self.db.check_membership(user_id)
@@ -8235,6 +8316,9 @@ class EnhancedBot:
                     return
                 elif user_status == "waiting_revoke_user":
                     self.handle_revoke_user_input(update, user_id, text)
+                    return
+                elif user_status == "waiting_rename_newname":
+                    self.handle_rename_newname_input(update, context, user_id, text)
                     return
         except Exception as e:
             print(f"❌ 检查广播状态失败: {e}")
@@ -10780,6 +10864,413 @@ class EnhancedBot:
             del self.pending_broadcasts[user_id]
         
         self.start_broadcast_wizard(query, update, context)
+    
+    # ================================
+    # 文件重命名功能
+    # ================================
+    
+    def handle_rename_start(self, query):
+        """开始文件重命名流程"""
+        user_id = query.from_user.id
+        query.answer()
+        
+        # 初始化任务
+        self.pending_rename[user_id] = {
+            'temp_dir': None,
+            'file_path': None,
+            'orig_name': None,
+            'ext': None
+        }
+        
+        # 设置用户状态
+        self.db.save_user(
+            user_id,
+            query.from_user.username or "",
+            query.from_user.first_name or "",
+            "waiting_rename_file"
+        )
+        
+        text = """
+<b>📝 文件重命名</b>
+
+<b>💡 功能说明</b>
+• 支持任意格式文件
+• 保留原始文件扩展名
+• 自动清理非法字符
+• 无需电脑即可重命名
+
+<b>📤 请上传需要重命名的文件</b>
+
+⏰ <i>5分钟内未上传将自动取消</i>
+        """
+        
+        keyboard = InlineKeyboardMarkup([
+            [InlineKeyboardButton("❌ 取消", callback_data="back_to_main")]
+        ])
+        
+        self.safe_edit_message(query, text, 'HTML', keyboard)
+    
+    def handle_rename_file_upload(self, update: Update, context: CallbackContext, document):
+        """处理重命名文件上传"""
+        user_id = update.effective_user.id
+        
+        if user_id not in self.pending_rename:
+            self.safe_send_message(update, "❌ 没有待处理的重命名任务")
+            return
+        
+        # 创建临时目录
+        temp_dir = tempfile.mkdtemp(prefix="temp_rename_")
+        orig_name = document.file_name
+        
+        # 分离文件名和扩展名
+        if '.' in orig_name:
+            name_parts = orig_name.rsplit('.', 1)
+            base_name = name_parts[0]
+            ext = '.' + name_parts[1]
+        else:
+            base_name = orig_name
+            ext = ''
+        
+        # 下载文件
+        file_path = os.path.join(temp_dir, orig_name)
+        try:
+            document.get_file().download(file_path)
+        except Exception as e:
+            self.safe_send_message(update, f"❌ 下载文件失败: {str(e)}")
+            shutil.rmtree(temp_dir, ignore_errors=True)
+            return
+        
+        # 保存任务信息
+        self.pending_rename[user_id]['temp_dir'] = temp_dir
+        self.pending_rename[user_id]['file_path'] = file_path
+        self.pending_rename[user_id]['orig_name'] = orig_name
+        self.pending_rename[user_id]['ext'] = ext
+        
+        # 更新状态，等待新文件名
+        self.db.save_user(
+            user_id,
+            update.effective_user.username or "",
+            update.effective_user.first_name or "",
+            "waiting_rename_newname"
+        )
+        
+        text = f"""
+✅ <b>文件已接收</b>
+
+<b>📁 原文件名:</b> <code>{orig_name}</code>
+<b>📏 文件大小:</b> {document.file_size / 1024:.2f} KB
+
+<b>✏️ 请输入新的文件名</b>
+
+• 只需输入文件名（不含扩展名）
+• 扩展名 <code>{ext}</code> 将自动保留
+• 非法字符将自动清理
+
+⏰ <i>5分钟内未输入将自动取消</i>
+        """
+        
+        self.safe_send_message(update, text, 'HTML')
+    
+    def handle_rename_newname_input(self, update: Update, context: CallbackContext, user_id: int, text: str):
+        """处理新文件名输入"""
+        if user_id not in self.pending_rename:
+            self.safe_send_message(update, "❌ 没有待处理的重命名任务")
+            return
+        
+        task = self.pending_rename[user_id]
+        
+        # 清理并验证新文件名
+        new_name = self.sanitize_filename(text.strip())
+        
+        if not new_name:
+            self.safe_send_message(update, "❌ 文件名无效，请重新输入")
+            return
+        
+        # 构建完整的新文件名
+        new_filename = new_name + task['ext']
+        new_file_path = os.path.join(task['temp_dir'], new_filename)
+        
+        # 重命名文件
+        try:
+            shutil.move(task['file_path'], new_file_path)
+        except Exception as e:
+            self.safe_send_message(update, f"❌ 重命名失败: {str(e)}")
+            self.cleanup_rename_task(user_id)
+            return
+        
+        # 发送重命名后的文件
+        caption = f"✅ <b>文件重命名成功</b>\n\n原文件名: <code>{task['orig_name']}</code>\n新文件名: <code>{new_filename}</code>"
+        
+        if self.send_document_safely(user_id, new_file_path, caption, new_filename):
+            self.safe_send_message(update, "✅ <b>文件已发送！</b>", 'HTML')
+        else:
+            self.safe_send_message(update, "❌ 发送文件失败")
+        
+        # 清理任务
+        self.cleanup_rename_task(user_id)
+    
+    def cleanup_rename_task(self, user_id: int):
+        """清理重命名任务"""
+        if user_id in self.pending_rename:
+            task = self.pending_rename[user_id]
+            if task['temp_dir'] and os.path.exists(task['temp_dir']):
+                shutil.rmtree(task['temp_dir'], ignore_errors=True)
+            del self.pending_rename[user_id]
+        
+        # 清除用户状态
+        self.db.save_user(user_id, "", "", "")
+    
+    # ================================
+    # 账户合并功能
+    # ================================
+    
+    def handle_merge_start(self, query):
+        """开始账户合并流程"""
+        user_id = query.from_user.id
+        query.answer()
+        
+        # 创建临时目录
+        temp_dir = tempfile.mkdtemp(prefix="temp_merge_")
+        
+        # 初始化任务
+        self.pending_merge[user_id] = {
+            'temp_dir': temp_dir,
+            'files': []
+        }
+        
+        # 设置用户状态
+        self.db.save_user(
+            user_id,
+            query.from_user.username or "",
+            query.from_user.first_name or "",
+            "waiting_merge_files"
+        )
+        
+        text = """
+<b>🧩 账户文件合并</b>
+
+<b>💡 功能说明</b>
+• 自动识别 TData ZIP 文件
+• 自动配对 Session + JSON 文件
+• 智能分类归档
+
+<b>📤 请上传文件</b>
+
+支持的文件类型：
+• .zip (TData格式)
+• .session (Session文件)
+• .json (配置文件)
+
+上传完成后点击"✅ 完成合并"
+        """
+        
+        keyboard = InlineKeyboardMarkup([
+            [InlineKeyboardButton("✅ 完成合并", callback_data="merge_finish")],
+            [InlineKeyboardButton("❌ 取消", callback_data="back_to_main")]
+        ])
+        
+        self.safe_edit_message(query, text, 'HTML', keyboard)
+    
+    def handle_merge_file_upload(self, update: Update, context: CallbackContext, document):
+        """处理合并文件上传"""
+        user_id = update.effective_user.id
+        
+        if user_id not in self.pending_merge:
+            self.safe_send_message(update, "❌ 没有待处理的合并任务")
+            return
+        
+        task = self.pending_merge[user_id]
+        filename = document.file_name
+        
+        # 检查文件类型
+        if not (filename.endswith('.zip') or filename.endswith('.session') or filename.endswith('.json')):
+            self.safe_send_message(update, "❌ 不支持的文件类型，请上传 .zip、.session 或 .json 文件")
+            return
+        
+        # 下载文件
+        file_path = os.path.join(task['temp_dir'], filename)
+        try:
+            document.get_file().download(file_path)
+            task['files'].append(filename)
+            
+            total_files = len(task['files'])
+            self.safe_send_message(
+                update,
+                f"✅ <b>已接收文件 {total_files}</b>\n\n"
+                f"文件名: <code>{filename}</code>\n\n"
+                "继续上传或点击 \"✅ 完成合并\"",
+                'HTML'
+            )
+        except Exception as e:
+            self.safe_send_message(update, f"❌ 下载文件失败: {str(e)}")
+    
+    def handle_merge_finish(self, update: Update, context: CallbackContext, query):
+        """完成合并，开始处理"""
+        user_id = query.from_user.id
+        query.answer()
+        
+        if user_id not in self.pending_merge:
+            self.safe_edit_message(query, "❌ 没有待处理的合并任务")
+            return
+        
+        task = self.pending_merge[user_id]
+        
+        if not task['files']:
+            self.safe_edit_message(query, "❌ 没有上传任何文件")
+            return
+        
+        self.safe_edit_message(query, "🔄 <b>正在处理文件...</b>", 'HTML')
+        
+        # 在后台线程中处理
+        def process_merge():
+            asyncio.run(self.process_merge_files(update, context, user_id))
+        
+        thread = threading.Thread(target=process_merge, daemon=True)
+        thread.start()
+    
+    async def process_merge_files(self, update, context, user_id: int):
+        """处理账户文件合并"""
+        if user_id not in self.pending_merge:
+            return
+        
+        task = self.pending_merge[user_id]
+        temp_dir = task['temp_dir']
+        files = task['files']
+        
+        # 分类存储
+        tdata_zips = []
+        session_files = []
+        json_files = []
+        other_files = []
+        
+        # 分类文件
+        for filename in files:
+            file_path = os.path.join(temp_dir, filename)
+            
+            if filename.endswith('.zip'):
+                # 检查是否是 TData ZIP
+                if self.is_tdata_zip(file_path):
+                    tdata_zips.append(filename)
+                else:
+                    other_files.append(filename)
+            elif filename.endswith('.session'):
+                session_files.append(filename)
+            elif filename.endswith('.json'):
+                json_files.append(filename)
+            else:
+                other_files.append(filename)
+        
+        # 配对 session 和 json 文件
+        paired_files = []
+        unpaired_session = []
+        unpaired_json = []
+        
+        session_basenames = {f.replace('.session', ''): f for f in session_files}
+        json_basenames = {f.replace('.json', ''): f for f in json_files}
+        
+        # 找出配对的文件
+        for basename in session_basenames.keys():
+            if basename in json_basenames:
+                paired_files.append((session_basenames[basename], json_basenames[basename]))
+            else:
+                unpaired_session.append(session_basenames[basename])
+        
+        # 找出未配对的 json
+        for basename in json_basenames.keys():
+            if basename not in session_basenames:
+                unpaired_json.append(json_basenames[basename])
+        
+        # 创建输出 ZIP 文件
+        result_dir = os.path.join(temp_dir, 'results')
+        os.makedirs(result_dir, exist_ok=True)
+        
+        timestamp = int(time.time())
+        zip_files_created = []
+        
+        # 打包 TData ZIP
+        if tdata_zips:
+            tdata_zip_path = os.path.join(result_dir, f'tdata_only_{timestamp}.zip')
+            with zipfile.ZipFile(tdata_zip_path, 'w') as zf:
+                for filename in tdata_zips:
+                    file_path = os.path.join(temp_dir, filename)
+                    zf.write(file_path, filename)
+            zip_files_created.append(('TData 文件', tdata_zip_path, len(tdata_zips)))
+        
+        # 打包配对的 session + json
+        if paired_files:
+            session_json_zip_path = os.path.join(result_dir, f'session_json_pairs_{timestamp}.zip')
+            with zipfile.ZipFile(session_json_zip_path, 'w') as zf:
+                for session_file, json_file in paired_files:
+                    session_path = os.path.join(temp_dir, session_file)
+                    json_path = os.path.join(temp_dir, json_file)
+                    zf.write(session_path, session_file)
+                    zf.write(json_path, json_file)
+            zip_files_created.append(('Session+JSON 配对', session_json_zip_path, len(paired_files)))
+        
+        # 打包未配对/其他文件
+        incomplete_files = unpaired_session + unpaired_json + other_files
+        if incomplete_files:
+            incomplete_zip_path = os.path.join(result_dir, f'incomplete_{timestamp}.zip')
+            with zipfile.ZipFile(incomplete_zip_path, 'w') as zf:
+                for filename in incomplete_files:
+                    file_path = os.path.join(temp_dir, filename)
+                    if os.path.exists(file_path):
+                        zf.write(file_path, filename)
+            zip_files_created.append(('未配对/其他', incomplete_zip_path, len(incomplete_files)))
+        
+        # 发送结果
+        summary = f"""
+✅ <b>账户文件合并完成！</b>
+
+<b>📊 处理结果</b>
+• TData ZIP: {len(tdata_zips)} 个
+• Session+JSON 配对: {len(paired_files)} 对
+• 未配对 Session: {len(unpaired_session)} 个
+• 未配对 JSON: {len(unpaired_json)} 个
+• 其他文件: {len(other_files)} 个
+
+<b>📦 生成文件</b>
+        """
+        
+        context.bot.send_message(chat_id=user_id, text=summary, parse_mode='HTML')
+        
+        # 发送所有生成的 ZIP 文件
+        for category, zip_path, count in zip_files_created:
+            caption = f"📦 {category} ({count} 项)"
+            with open(zip_path, 'rb') as f:
+                context.bot.send_document(
+                    chat_id=user_id,
+                    document=f,
+                    caption=caption,
+                    filename=os.path.basename(zip_path)
+                )
+        
+        # 清理任务
+        self.cleanup_merge_task(user_id)
+    
+    def is_tdata_zip(self, zip_path: str) -> bool:
+        """检测 ZIP 文件是否包含 TData 标识"""
+        try:
+            with zipfile.ZipFile(zip_path, 'r') as zf:
+                # 检查是否包含 D877F783D5D3EF8C 目录
+                namelist = zf.namelist()
+                for name in namelist:
+                    if 'D877F783D5D3EF8C' in name:
+                        return True
+            return False
+        except:
+            return False
+    
+    def cleanup_merge_task(self, user_id: int):
+        """清理合并任务"""
+        if user_id in self.pending_merge:
+            task = self.pending_merge[user_id]
+            if task['temp_dir'] and os.path.exists(task['temp_dir']):
+                shutil.rmtree(task['temp_dir'], ignore_errors=True)
+            del self.pending_merge[user_id]
+        
+        # 清除用户状态
+        self.db.save_user(user_id, "", "", "")
     
     def run(self):
         print("🚀 启动增强版机器人（速度优化版）...")
