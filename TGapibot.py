@@ -1367,6 +1367,20 @@ class Database:
             print(f"❌ 授予会员失败: {e}")
             return False
     
+    def revoke_membership(self, user_id: int) -> bool:
+        """撤销用户会员"""
+        try:
+            conn = sqlite3.connect(self.db_name)
+            c = conn.cursor()
+            c.execute("DELETE FROM memberships WHERE user_id = ?", (user_id,))
+            rows_deleted = c.rowcount
+            conn.commit()
+            conn.close()
+            return rows_deleted > 0
+        except Exception as e:
+            print(f"❌ 撤销会员失败: {e}")
+            return False
+    
     def redeem_code(self, user_id: int, code: str) -> Tuple[bool, str, int]:
         """兑换卡密"""
         try:
@@ -6179,9 +6193,16 @@ class EnhancedBot:
             self.handle_admin_card_generate(query, days)
         elif data == "admin_manual_menu":
             self.handle_admin_manual_menu(query)
+        elif data == "admin_revoke_menu":
+            self.handle_admin_revoke_menu(query)
         elif data.startswith("admin_manual_days_"):
             days = int(data.split("_")[-1])
             self.handle_admin_manual_grant(query, context, days)
+        elif data.startswith("admin_revoke_confirm_"):
+            target_user_id = int(data.split("_")[-1])
+            self.handle_admin_revoke_confirm(query, context, target_user_id)
+        elif data == "admin_revoke_cancel":
+            self.handle_admin_revoke_cancel(query)
         # 广播消息回调
         elif data.startswith("broadcast_"):
             self.handle_broadcast_callbacks(update, context, query, data)
@@ -6473,6 +6494,9 @@ class EnhancedBot:
             [
                 InlineKeyboardButton("💳 卡密开通", callback_data="admin_card_menu"),
                 InlineKeyboardButton("👤 人工开通", callback_data="admin_manual_menu")
+            ],
+            [
+                InlineKeyboardButton("撤销会员", callback_data="admin_revoke_menu")
             ],
             [
                 InlineKeyboardButton("📢 群发通知", callback_data="broadcast_menu")
@@ -8209,6 +8233,9 @@ class EnhancedBot:
                 elif user_status == "waiting_manual_user":
                     self.handle_manual_user_input(update, user_id, text)
                     return
+                elif user_status == "waiting_revoke_user":
+                    self.handle_revoke_user_input(update, user_id, text)
+                    return
         except Exception as e:
             print(f"❌ 检查广播状态失败: {e}")
         
@@ -9349,6 +9376,193 @@ class EnhancedBot:
         
         keyboard = InlineKeyboardMarkup([
             [InlineKeyboardButton("🔄 继续开通", callback_data="admin_manual_menu")],
+            [InlineKeyboardButton("🔙 返回管理面板", callback_data="admin_panel")]
+        ])
+        
+        self.safe_edit_message(query, text, 'HTML', keyboard)
+    
+    # ================================
+    # 撤销会员功能
+    # ================================
+    
+    def handle_admin_revoke_menu(self, query):
+        """管理员撤销会员菜单"""
+        user_id = query.from_user.id
+        
+        if not self.db.is_admin(user_id):
+            query.answer("❌ 仅管理员可访问")
+            return
+        
+        query.answer()
+        
+        # 设置用户状态
+        self.db.save_user(
+            user_id,
+            query.from_user.username or "",
+            query.from_user.first_name or "",
+            "waiting_revoke_user"
+        )
+        
+        text = """
+<b>撤销会员</b>
+
+<b>📋 请输入要撤销的用户名（@name）或用户ID：</b>
+
+支持以下格式：
+• 用户ID：<code>123456789</code>
+• 用户名：<code>@username</code> 或 <code>username</code>
+
+<b>💡 提示</b>
+• 用户必须先与机器人交互过
+• 撤销后会删除用户的所有会员权限
+
+⏰ <i>5分钟内有效</i>
+        """
+        
+        keyboard = InlineKeyboardMarkup([
+            [InlineKeyboardButton("❌ 取消", callback_data="admin_panel")]
+        ])
+        
+        self.safe_edit_message(query, text, 'HTML', keyboard)
+    
+    def handle_revoke_user_input(self, update, admin_id: int, text: str):
+        """处理管理员输入的要撤销的用户信息"""
+        # 清除状态
+        self.db.save_user(admin_id, "", "", "")
+        
+        # 解析用户输入
+        text = text.strip()
+        target_user_id = None
+        
+        # 尝试作为用户ID解析
+        if text.isdigit():
+            target_user_id = int(text)
+        else:
+            # 尝试作为用户名解析
+            username = text.replace("@", "")
+            user_row = self.db.get_user_by_username(username)
+            if user_row:
+                target_user_id = user_row[0]
+        
+        if not target_user_id:
+            self.safe_send_message(
+                update,
+                "❌ <b>未找到该用户</b>\n\n"
+                "未找到该用户，请确认对方已与机器人对话入库",
+                'HTML'
+            )
+            return
+        
+        # 获取用户信息
+        user_info = self.db.get_user_membership_info(target_user_id)
+        if not user_info:
+            self.safe_send_message(
+                update,
+                "❌ <b>未找到该用户</b>\n\n"
+                "未找到该用户，请确认对方已与机器人对话入库",
+                'HTML'
+            )
+            return
+        
+        # 获取用户会员信息
+        is_member, level, expiry = self.db.check_membership(target_user_id)
+        
+        username = user_info.get('username', '')
+        first_name = user_info.get('first_name', '')
+        display_name = first_name or username or f"用户{target_user_id}"
+        
+        if is_member:
+            member_status = f"💎 {level}\n• 到期时间: {expiry}"
+        else:
+            member_status = "❌ 暂无会员"
+        
+        text = f"""
+<b>⚠️ 确认撤销会员</b>
+
+<b>📋 用户信息</b>
+• 昵称: {display_name}
+• ID: <code>{target_user_id}</code>
+• 用户名: @{username if username else '无'}
+
+<b>💎 当前会员状态</b>
+{member_status}
+
+<b>⚠️ 确认要撤销该用户的会员吗？</b>
+此操作将删除该用户的所有会员权限，且无法恢复。
+        """
+        
+        keyboard = InlineKeyboardMarkup([
+            [InlineKeyboardButton("✅ 确认撤销", callback_data=f"admin_revoke_confirm_{target_user_id}")],
+            [InlineKeyboardButton("❌ 取消", callback_data="admin_revoke_cancel")]
+        ])
+        
+        self.safe_send_message(update, text, 'HTML', keyboard)
+    
+    def handle_admin_revoke_confirm(self, query, context, target_user_id: int):
+        """管理员确认撤销会员"""
+        admin_id = query.from_user.id
+        
+        if not self.db.is_admin(admin_id):
+            query.answer("❌ 仅管理员可访问")
+            return
+        
+        query.answer()
+        
+        # 获取用户信息（撤销前）
+        user_info = self.db.get_user_membership_info(target_user_id)
+        is_member, level, expiry = self.db.check_membership(target_user_id)
+        
+        username = user_info.get('username', '')
+        first_name = user_info.get('first_name', '')
+        display_name = first_name or username or f"用户{target_user_id}"
+        
+        # 执行撤销
+        success = self.db.revoke_membership(target_user_id)
+        
+        if success:
+            text = f"""
+✅ <b>撤销成功！</b>
+
+<b>📋 撤销信息</b>
+• 目标用户: {display_name}
+• 用户ID: <code>{target_user_id}</code>
+• 原会员等级: {level}
+• 原到期时间: {expiry}
+
+已成功撤销该用户的会员权限。
+            """
+            
+            # 尝试通知用户
+            try:
+                context.bot.send_message(
+                    chat_id=target_user_id,
+                    text="""
+⚠️ <b>会员权限已被撤销</b>
+
+您的会员权限已被管理员撤销。
+
+如有疑问，请联系管理员。
+                    """,
+                    parse_mode='HTML'
+                )
+            except:
+                pass
+        else:
+            text = "❌ <b>撤销失败</b>\n\n该用户可能没有会员权限，或撤销操作失败。"
+        
+        keyboard = InlineKeyboardMarkup([
+            [InlineKeyboardButton("🔄 继续撤销", callback_data="admin_revoke_menu")],
+            [InlineKeyboardButton("🔙 返回管理面板", callback_data="admin_panel")]
+        ])
+        
+        self.safe_edit_message(query, text, 'HTML', keyboard)
+    
+    def handle_admin_revoke_cancel(self, query):
+        """取消撤销会员"""
+        query.answer()
+        
+        text = "❌ <b>已取消撤销操作</b>"
+        keyboard = InlineKeyboardMarkup([
             [InlineKeyboardButton("🔙 返回管理面板", callback_data="admin_panel")]
         ])
         
