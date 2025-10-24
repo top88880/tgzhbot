@@ -40,7 +40,9 @@ from i18n import (
     get_lang_label,
     get_welcome_title,
     get_text,
+    get_text_by_key,
     DEFAULT_LANG,
+    TEXTS,
 )
 print("🔍 Telegram账号检测机器人 V8.0")
 print(f"📅 当前时间: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
@@ -4942,6 +4944,71 @@ class EnhancedBot:
         
         print("✅ 增强版机器人初始化完成")
     
+    def t(self, user_id: int, text_dict: dict, default: str = "", **kwargs) -> str:
+        """
+        Translate text based on user's language preference.
+        
+        Args:
+            user_id: User ID to get language preference
+            text_dict: Dictionary with translations for each language
+            default: Default text if translation not found
+            **kwargs: Format parameters for string formatting
+        
+        Returns:
+            Translated and formatted string
+        
+        Usage:
+            text = self.t(user_id, TEXTS["welcome_message"], name="John")
+            text = self.t(user_id, {"zh-CN": "你好", "en-US": "Hello"})
+        """
+        user_lang = self.db.get_user_lang(user_id)
+        user_lang = normalize_lang(user_lang)
+        
+        # Get text for user's language, fallback to default language
+        if isinstance(text_dict, dict):
+            text = text_dict.get(user_lang) or text_dict.get(DEFAULT_LANG) or default
+        else:
+            text = str(text_dict) if text_dict else default
+        
+        # Apply formatting if kwargs provided
+        if kwargs and text:
+            try:
+                return text.format(**kwargs)
+            except (KeyError, ValueError) as e:
+                print(f"⚠️ Text formatting error: {e}")
+                return text
+        return text or default
+    
+    def t_by_lang(self, lang: str, text_dict: dict, default: str = "", **kwargs) -> str:
+        """
+        Translate text for a specific language (when user_id is not available).
+        
+        Args:
+            lang: Language code
+            text_dict: Dictionary with translations for each language
+            default: Default text if translation not found
+            **kwargs: Format parameters for string formatting
+        
+        Returns:
+            Translated and formatted string
+        """
+        lang = normalize_lang(lang)
+        
+        # Get text for specified language, fallback to default language
+        if isinstance(text_dict, dict):
+            text = text_dict.get(lang) or text_dict.get(DEFAULT_LANG) or default
+        else:
+            text = str(text_dict) if text_dict else default
+        
+        # Apply formatting if kwargs provided
+        if kwargs and text:
+            try:
+                return text.format(**kwargs)
+            except (KeyError, ValueError) as e:
+                print(f"⚠️ Text formatting error: {e}")
+                return text
+        return text or default
+    
     def setup_handlers(self):
         self.dp.add_handler(CommandHandler("start", self.start_command))
         self.dp.add_handler(CommandHandler("help", self.help_command))
@@ -4972,6 +5039,35 @@ class EnhancedBot:
         # 新增：广播媒体上传处理
         self.dp.add_handler(MessageHandler(Filters.photo, self.handle_photo))
         self.dp.add_handler(MessageHandler(Filters.text & ~Filters.command, self.handle_text))
+        
+        # 添加错误处理器
+        self.dp.add_error_handler(self.error_handler)
+    
+    def error_handler(self, update: Update, context: CallbackContext):
+        """处理错误，避免崩溃"""
+        try:
+            raise context.error
+        except Exception as e:
+            print(f"❌ Error occurred: {type(e).__name__}: {e}")
+            import traceback
+            traceback.print_exc()
+            
+            # 尝试通知用户
+            if update and update.effective_user:
+                try:
+                    user_id = update.effective_user.id
+                    error_msg = self.t(user_id, {
+                        "zh-CN": "❌ 发生错误，请稍后重试",
+                        "en-US": "❌ An error occurred, please try again later",
+                        "ru": "❌ Произошла ошибка, попробуйте позже",
+                        "my": "❌ အမှားတစ်ခု ဖြစ်ပွားခဲ့သည်၊ နောက်မှ ထပ်စမ်းကြည့်ပါ",
+                        "bn": "❌ একটি ত্রুটি ঘটেছে, পরে আবার চেষ্টা করুন",
+                        "ar": "❌ حدث خطأ، يرجى المحاولة مرة أخرى لاحقًا",
+                        "vi": "❌ Đã xảy ra lỗi, vui lòng thử lại sau"
+                    })
+                    self.safe_send_message(update, error_msg)
+                except:
+                    pass
     
     def safe_send_message(self, update, text, parse_mode=None, reply_markup=None):
         """安全发送消息"""
@@ -5137,25 +5233,38 @@ class EnhancedBot:
         welcome_title = get_welcome_title(user_lang)
         
         if self.db.is_admin(user_id):
-            member_status = "👑 管理员"
+            member_status = self.t(user_id, TEXTS["admin_status"])
         elif is_member:
             member_status = f"🎁 {level}"
         else:
-            member_status = "❌ 无会员"
+            member_status = self.t(user_id, TEXTS["no_membership"])
+        
+        # Build welcome text using i18n
+        user_info_title = self.t(user_id, TEXTS["user_info_title"])
+        nickname_text = self.t(user_id, TEXTS["nickname"], name=first_name)
+        user_id_text = self.t(user_id, TEXTS["user_id"], user_id=user_id)
+        membership_text = self.t(user_id, TEXTS["membership"], status=member_status)
+        expiry_text = self.t(user_id, TEXTS["expiry"], expiry=expiry)
+        
+        proxy_status_title = self.t(user_id, TEXTS["proxy_status_title"])
+        proxy_mode_value = self.t(user_id, TEXTS["enabled"]) if self.proxy_manager.is_proxy_mode_active(self.db) else self.t(user_id, TEXTS["local_connection"])
+        proxy_mode_text = self.t(user_id, TEXTS["proxy_mode"], mode=proxy_mode_value)
+        proxy_count_text = self.t(user_id, TEXTS["proxy_count"], count=len(self.proxy_manager.proxies))
+        current_time_text = self.t(user_id, TEXTS["current_time"], time=datetime.now().strftime('%Y-%m-%d %H:%M:%S'))
         
         welcome_text = f"""
 <b>{welcome_title}</b>
 
-👤 <b>用户信息</b>
-• 昵称: {first_name}
-• ID: <code>{user_id}</code>
-• 会员: {member_status}
-• 到期: {expiry}
+{user_info_title}
+{nickname_text}
+{user_id_text}
+{membership_text}
+{expiry_text}
 
-📡 <b>代理状态</b>
-• 代理模式: {'🟢启用' if self.proxy_manager.is_proxy_mode_active(self.db) else '🔴本地连接'}
-• 代理数量: {len(self.proxy_manager.proxies)}个
-• 当前时间: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
+{proxy_status_title}
+{proxy_mode_text}
+{proxy_count_text}
+{current_time_text}
         """
         
 
@@ -5317,40 +5426,53 @@ class EnhancedBot:
         )        
     def help_command(self, update: Update, context: CallbackContext):
         """处理 /help 命令和帮助按钮"""
-        help_text = """
-📖 <b>使用帮助</b>
+        user_id = update.effective_user.id if update.effective_user else 0
+        
+        help_text = f"""
+{self.t(user_id, TEXTS["help_text"])}
 
-<b>🚀 主要功能</b>
-• 代理连接模式自动检测账号状态
-• 实时进度显示和自动文件发送
-• 支持Session和TData格式
-• Tdata与Session格式互转
+<b>🚀 {self.t(user_id, {"zh-CN": "主要功能", "en-US": "Main Features", "ru": "Основные функции", "my": "အဓိကအင်္ဂါရပ်များ", "bn": "প্রধান বৈশিষ্ট্য", "ar": "الميزات الرئيسية", "vi": "Tính năng chính"})}</b>
+• {self.t(user_id, {"zh-CN": "代理连接模式自动检测账号状态", "en-US": "Proxy connection mode auto-detects account status", "ru": "Режим прокси-соединения автоматически определяет статус аккаунта", "my": "Proxy ချိတ်ဆက်မှုမုဒ်သည် အကောင့်အခြေအနေကို အလိုအလျောက် စစ်ဆေးသည်", "bn": "প্রক্সি সংযোগ মোড স্বয়ংক্রিয়ভাবে অ্যাকাউন্ট স্থিতি সনাক্ত করে", "ar": "وضع اتصال البروكسي يكتشف حالة الحساب تلقائيًا", "vi": "Chế độ kết nối proxy tự động phát hiện trạng thái tài khoản"})}
+• {self.t(user_id, {"zh-CN": "实时进度显示和自动文件发送", "en-US": "Real-time progress display and automatic file sending", "ru": "Отображение прогресса в реальном времени и автоматическая отправка файлов", "my": "အချိန်နှင့်တပြေးညီ တိုးတက်မှုပြသခြင်းနှင့် အလိုအလျောက် ဖိုင်ပေးပို့ခြင်း", "bn": "রিয়েল-টাইম অগ্রগতি প্রদর্শন এবং স্বয়ংক্রিয় ফাইল পাঠানো", "ar": "عرض التقدم في الوقت الفعلي وإرسال الملفات تلقائيًا", "vi": "Hiển thị tiến trình theo thời gian thực và gửi tệp tự động"})}
+• {self.t(user_id, {"zh-CN": "支持Session和TData格式", "en-US": "Supports Session and TData formats", "ru": "Поддержка форматов Session и TData", "my": "Session နှင့် TData ဖော်မတ်များကို ပံ့ပိုးသည်", "bn": "Session এবং TData ফরম্যাট সমর্থন করে", "ar": "يدعم تنسيقات Session و TData", "vi": "Hỗ trợ định dạng Session và TData"})}
 
-<b>📁 支持格式</b>
-• Session + JSON文件
-• TData文件夹
-• ZIP压缩包
+<b>📁 {self.t(user_id, {"zh-CN": "支持格式", "en-US": "Supported Formats", "ru": "Поддерживаемые форматы", "my": "ပံ့ပိုးထားသော ဖော်မတ်များ", "bn": "সমর্থিত ফরম্যাট", "ar": "التنسيقات المدعومة", "vi": "Định dạng được hỗ trợ"})}</b>
+• Session + JSON {self.t(user_id, {"zh-CN": "文件", "en-US": "files", "ru": "файлы", "my": "ဖိုင်များ", "bn": "ফাইল", "ar": "ملفات", "vi": "tệp"})}
+• TData {self.t(user_id, {"zh-CN": "文件夹", "en-US": "folders", "ru": "папки", "my": "ဖိုင်တွဲများ", "bn": "ফোল্ডার", "ar": "مجلدات", "vi": "thư mục"})}
+• ZIP {self.t(user_id, {"zh-CN": "压缩包", "en-US": "archives", "ru": "архивы", "my": "ဖိုင်များ", "bn": "সংরক্ষণাগার", "ar": "أرشيف", "vi": "tệp nén"})}
 
-<b>🔄 格式转换</b>
-• Tdata → Session: 转换为Session格式
-• Session → Tdata: 转换为Tdata格式
-• 批量并发处理，提高效率
+<b>🔄 {self.t(user_id, {"zh-CN": "格式转换", "en-US": "Format Conversion", "ru": "Преобразование формата", "my": "ဖော်မတ်ပြောင်းခြင်း", "bn": "ফরম্যাট রূপান্তর", "ar": "تحويل التنسيق", "vi": "Chuyển đổi định dạng"})}</b>
+• Tdata → Session
+• Session → Tdata
+• {self.t(user_id, {"zh-CN": "批量并发处理", "en-US": "Batch concurrent processing", "ru": "Пакетная параллельная обработка", "my": "အစုလိုက် တစ်ပြိုင်နက် စီမံဆောင်ရွက်ခြင်း", "bn": "ব্যাচ সমান্তরাল প্রক্রিয়াকরণ", "ar": "معالجة دفعة متزامنة", "vi": "Xử lý đồng thời hàng loạt"})}
 
-<b>📡 代理功能</b>
-• 自动读取proxy.txt文件
-• 支持HTTP/SOCKS4/SOCKS5代理
-• 代理失败自动切换到本地连接
-
-<b>📋 使用流程</b>
-1. 准备proxy.txt文件（可选）
-2. 点击"🚀 开始检测"或"🔄 格式转换"
-3. 上传ZIP文件
-4. 观看实时进度
-5. 自动接收分类文件
+<b>📡 {self.t(user_id, {"zh-CN": "代理功能", "en-US": "Proxy Features", "ru": "Функции прокси", "my": "Proxy လုပ်ဆောင်ချက်များ", "bn": "প্রক্সি বৈশিষ্ট্য", "ar": "ميزات البروكسي", "vi": "Tính năng Proxy"})}</b>
+• {self.t(user_id, {"zh-CN": "自动读取proxy.txt文件", "en-US": "Auto-read proxy.txt file", "ru": "Автоматическое чтение файла proxy.txt", "my": "proxy.txt ဖိုင်ကို အလိုအလျောက် ဖတ်ခြင်း", "bn": "স্বয়ংক্রিয়ভাবে proxy.txt ফাইল পড়ুন", "ar": "قراءة ملف proxy.txt تلقائيًا", "vi": "Tự động đọc tệp proxy.txt"})}
+• {self.t(user_id, {"zh-CN": "支持HTTP/SOCKS4/SOCKS5代理", "en-US": "Supports HTTP/SOCKS4/SOCKS5 proxies", "ru": "Поддержка прокси HTTP/SOCKS4/SOCKS5", "my": "HTTP/SOCKS4/SOCKS5 proxy များကို ပံ့ပိုးသည်", "bn": "HTTP/SOCKS4/SOCKS5 প্রক্সি সমর্থন করে", "ar": "يدعم بروكسيات HTTP/SOCKS4/SOCKS5", "vi": "Hỗ trợ proxy HTTP/SOCKS4/SOCKS5"})}
         """
         
+        if self.db.is_admin(user_id):
+            admin_cmds = self.t(user_id, {"zh-CN": "管理员命令", "en-US": "Admin Commands", "ru": "Команды администратора", "my": "စီမံခန့်ခွဲသူ အမိန့်များ", "bn": "প্রশাসক কমান্ড", "ar": "أوامر المسؤول", "vi": "Lệnh quản trị"})
+            speed_opt = self.t(user_id, {"zh-CN": "速度优化功能", "en-US": "Speed Optimization", "ru": "Оптимизация скорости", "my": "အမြန်နှုန်းမြှင့်တင်ခြင်း", "bn": "গতি অপ্টিমাইজেশন", "ar": "تحسين السرعة", "vi": "Tối ưu hóa tốc độ"})
+            help_text += f"""
+
+<b>👑 {admin_cmds}</b>
+• /addadmin [ID/{self.t(user_id, {"zh-CN": "用户名", "en-US": "username", "ru": "имя пользователя", "my": "အသုံးပြုသူအမည်", "bn": "ব্যবহারকারীর নাম", "ar": "اسم المستخدم", "vi": "tên người dùng"})}] - {self.t(user_id, {"zh-CN": "添加管理员", "en-US": "Add admin", "ru": "Добавить администратора", "my": "စီမံခန့်ခွဲသူထည့်ရန်", "bn": "প্রশাসক যোগ করুন", "ar": "إضافة مسؤول", "vi": "Thêm quản trị viên"})}
+• /removeadmin [ID] - {self.t(user_id, {"zh-CN": "移除管理员", "en-US": "Remove admin", "ru": "Удалить администратора", "my": "စီမံခန့်ခွဲသူဖယ်ရှားရန်", "bn": "প্রশাসক সরান", "ar": "إزالة المسؤول", "vi": "Xóa quản trị viên"})}
+• /listadmins - {self.t(user_id, {"zh-CN": "查看管理员列表", "en-US": "List admins", "ru": "Список администраторов", "my": "စီမံခန့်ခွဲသူများစာရင်း", "bn": "প্রশাসক তালিকা", "ar": "قائمة المسؤولين", "vi": "Danh sách quản trị viên"})}
+• /proxy - {self.t(user_id, {"zh-CN": "代理状态管理", "en-US": "Proxy status", "ru": "Статус прокси", "my": "Proxy အခြေအနะ", "bn": "প্রক্সি স্থিতি", "ar": "حالة البروكسي", "vi": "Trạng thái proxy"})}
+• /testproxy - {self.t(user_id, {"zh-CN": "测试代理", "en-US": "Test proxies", "ru": "Тест прокси", "my": "Proxy စမ်းသပ်ရန်", "bn": "প্রক্সি পরীক্ষা", "ar": "اختبار البروكسي", "vi": "Kiểm tra proxy"})}
+• /cleanproxy - {self.t(user_id, {"zh-CN": "清理失效代理", "en-US": "Clean invalid proxies", "ru": "Очистить неработающие прокси", "my": "မမှန်ကန်သော proxy များကို ရှင်းလင်းရန်", "bn": "অবৈধ প্রক্সি পরিষ্কার করুন", "ar": "تنظيف البروكسيات غير الصالحة", "vi": "Dọn proxy không hợp lệ"})}
+
+<b>⚡ {speed_opt}</b>
+• {self.t(user_id, {"zh-CN": "快速模式", "en-US": "Fast mode", "ru": "Быстрый режим", "my": "အမြန်မုဒ်", "bn": "দ্রুত মোড", "ar": "الوضع السريع", "vi": "Chế độ nhanh"})}: {config.PROXY_FAST_MODE}
+• {self.t(user_id, {"zh-CN": "并发检测", "en-US": "Concurrent checks", "ru": "Параллельные проверки", "my": "တစ်ပြိုင်နက် စစ်ဆေးမှုများ", "bn": "সমান্তরাল পরীক্ষা", "ar": "الفحوصات المتزامنة", "vi": "Kiểm tra đồng thời"})}: {config.PROXY_CHECK_CONCURRENT}
+• {self.t(user_id, {"zh-CN": "智能重试", "en-US": "Smart retry", "ru": "Умная повторная попытка", "my": "အသိဉာဏ်ရှိသော ပြန်လုပ်ခြင်း", "bn": "স্মার্ট পুনঃচেষ্টা", "ar": "إعادة محاولة ذكية", "vi": "Thử lại thông minh"})}: {config.PROXY_RETRY_COUNT}
+            """
+        
+        back_text = get_menu_labels(self.db.get_user_lang(user_id))["back_main"]
         keyboard = InlineKeyboardMarkup([
-            [InlineKeyboardButton("🔙 返回主菜单", callback_data="back_to_main")]
+            [InlineKeyboardButton(back_text, callback_data="back_to_main")]
         ])
         
         if update.callback_query:
@@ -5366,26 +5488,6 @@ class EnhancedBot:
                 reply_markup=keyboard,
                 parse_mode='HTML'
             )
-        if self.db.is_admin(user_id):
-            help_text += f"""
-
-<b>👑 管理员命令</b>
-• /addadmin [ID/用户名] - 添加管理员
-• /removeadmin [ID] - 移除管理员
-• /listadmins - 查看管理员列表
-• /proxy - 代理状态管理
-• /testproxy - 测试代理连接性能
-• /cleanproxy - 清理失效代理（自动优化）
-• /convert - 格式转换功能
-
-<b>⚡ 速度优化功能</b>
-• 快速模式: {config.PROXY_FAST_MODE}
-• 并发检测: {config.PROXY_CHECK_CONCURRENT} 个
-• 智能重试: {config.PROXY_RETRY_COUNT} 次
-• 自动清理: {config.PROXY_AUTO_CLEANUP}
-            """
-        
-        self.safe_send_message(update, help_text, 'HTML')
     
     def add_admin_command(self, update: Update, context: CallbackContext):
         """添加管理员命令"""
@@ -5843,39 +5945,51 @@ class EnhancedBot:
         # 检查权限
         is_member, level, _ = self.db.check_membership(user_id)
         if not is_member and not self.db.is_admin(user_id):
-            self.safe_send_message(update, "❌ 需要会员权限才能使用格式转换功能")
+            self.safe_send_message(update, self.t(user_id, TEXTS["need_membership"]))
             return
         
         if not OPENTELE_AVAILABLE:
-            self.safe_send_message(update, "❌ 格式转换功能不可用\n\n原因: opentele库未安装\n💡 请安装: pip install opentele")
+            error_msg = self.t(user_id, {
+                "zh-CN": "❌ 格式转换功能不可用\n\n原因: opentele库未安装\n💡 请安装: pip install opentele",
+                "en-US": "❌ Format conversion unavailable\n\nReason: opentele library not installed\n💡 Please install: pip install opentele",
+                "ru": "❌ Преобразование формата недоступно\n\nПричина: библиотека opentele не установлена\n💡 Пожалуйста, установите: pip install opentele",
+                "my": "❌ ဖော်မတ်ပြောင်းခြင်း မရနိုင်ပါ\n\nအကြောင်းရင်း: opentele library မထည့်သွင်းထားပါ\n💡 ထည့်သွင်းပါ: pip install opentele",
+                "bn": "❌ ফরম্যাট রূপান্তর উপলব্ধ নয়\n\nকারণ: opentele লাইব্রেরি ইনস্টল করা নেই\n💡 ইনস্টল করুন: pip install opentele",
+                "ar": "❌ تحويل التنسيق غير متاح\n\nالسبب: مكتبة opentele غير مثبتة\n💡 يرجى التثبيت: pip install opentele",
+                "vi": "❌ Chuyển đổi định dạng không khả dụng\n\nLý do: thư viện opentele chưa được cài đặt\n💡 Vui lòng cài đặt: pip install opentele"
+            })
+            self.safe_send_message(update, error_msg)
             return
         
-        text = """
-🔄 <b>格式转换功能</b>
+        title = self.t(user_id, TEXTS["convert_menu_title"])
+        select_prompt = self.t(user_id, TEXTS["convert_select_direction"])
+        
+        text = f"""
+{title}
 
-<b>📁 支持的转换</b>
+<b>📁 {self.t(user_id, {"zh-CN": "支持的转换", "en-US": "Supported Conversions", "ru": "Поддерживаемые преобразования", "my": "ပံ့ပိုးထားသော ပြောင်းလဲမှုများ", "bn": "সমর্থিত রূপান্তর", "ar": "التحويلات المدعومة", "vi": "Chuyển đổi được hỗ trợ"})}</b>
 1️⃣ <b>Tdata → Session</b>
-   • 将Telegram Desktop的tdata格式转换为Session格式
-   • 适用于需要使用Session的工具
+   • {self.t(user_id, {"zh-CN": "将Telegram Desktop的tdata格式转换为Session格式", "en-US": "Convert Telegram Desktop tdata format to Session format", "ru": "Преобразование формата tdata Telegram Desktop в формат Session", "my": "Telegram Desktop ၏ tdata ဖော်မတ်ကို Session ဖော်မတ်သို့ ပြောင်းပါ", "bn": "Telegram Desktop এর tdata ফরম্যাটকে Session ফরম্যাটে রূপান্তর করুন", "ar": "تحويل تنسيق tdata من Telegram Desktop إلى تنسيق Session", "vi": "Chuyển đổi định dạng tdata của Telegram Desktop sang định dạng Session"})}
 
 2️⃣ <b>Session → Tdata</b>
-   • 将Session格式转换为Telegram Desktop的tdata格式
-   • 适用于Telegram Desktop客户端
+   • {self.t(user_id, {"zh-CN": "将Session格式转换为Telegram Desktop的tdata格式", "en-US": "Convert Session format to Telegram Desktop tdata format", "ru": "Преобразование формата Session в формат tdata Telegram Desktop", "my": "Session ဖော်မတ်ကို Telegram Desktop ၏ tdata ဖော်မတ်သို့ ပြောင်းပါ", "bn": "Session ফরম্যাটকে Telegram Desktop এর tdata ফরম্যাটে রূপান্তর করুন", "ar": "تحويل تنسيق Session إلى تنسيق tdata من Telegram Desktop", "vi": "Chuyển đổi định dạng Session sang định dạng tdata của Telegram Desktop"})}
 
-<b>⚡ 功能特点</b>
-• 批量并发转换，提高效率
-• 实时进度显示
-• 自动分类成功和失败
-• 完善的错误处理
+<b>⚡ {self.t(user_id, {"zh-CN": "功能特点", "en-US": "Features", "ru": "Особенности", "my": "အင်္ဂါရပ်များ", "bn": "বৈশিষ্ট্য", "ar": "الميزات", "vi": "Tính năng"})}</b>
+• {self.t(user_id, {"zh-CN": "批量并发转换，提高效率", "en-US": "Batch concurrent conversion for efficiency", "ru": "Пакетное параллельное преобразование для эффективности", "my": "စွမ်းဆောင်ရည်မြှင့်တင်ရန် အစု စုပေါင်းပြောင်းလဲမှု", "bn": "দক্ষতার জন্য ব্যাচ সমান্তরাল রূপান্তর", "ar": "تحويل دفعة متزامن للكفاءة", "vi": "Chuyển đổi đồng thời hàng loạt để nâng cao hiệu quả"})}
+• {self.t(user_id, {"zh-CN": "实时进度显示", "en-US": "Real-time progress display", "ru": "Отображение прогресса в реальном времени", "my": "အချိန်နှင့်တပြေးညီ တိုးတက်မှု ပြသခြင်း", "bn": "রিয়েল-টাইম অগ্রগতি প্রদর্শন", "ar": "عرض التقدم في الوقت الفعلي", "vi": "Hiển thị tiến trình theo thời gian thực"})}
 
-<b>📤 操作说明</b>
-请选择要执行的转换类型：
+<b>📤 {self.t(user_id, {"zh-CN": "操作说明", "en-US": "Instructions", "ru": "Инструкции", "my": "လမ်းညွှန်ချက်များ", "bn": "নির্দেশাবলী", "ar": "التعليمات", "vi": "Hướng dẫn"})}</b>
+{select_prompt}
         """
         
+        tdata_to_session_text = self.t(user_id, TEXTS["convert_tdata_to_session"])
+        session_to_tdata_text = self.t(user_id, TEXTS["convert_session_to_tdata"])
+        back_text = get_menu_labels(self.db.get_user_lang(user_id))["back_main"]
+        
         buttons = [
-            [InlineKeyboardButton("📤 Tdata → Session", callback_data="convert_tdata_to_session")],
-            [InlineKeyboardButton("📥 Session → Tdata", callback_data="convert_session_to_tdata")],
-            [InlineKeyboardButton("🔙 返回主菜单", callback_data="back_to_main")]
+            [InlineKeyboardButton(tdata_to_session_text, callback_data="convert_tdata_to_session")],
+            [InlineKeyboardButton(session_to_tdata_text, callback_data="convert_session_to_tdata")],
+            [InlineKeyboardButton(back_text, callback_data="back_to_main")]
         ]
         
         keyboard = InlineKeyboardMarkup(buttons)
@@ -5886,24 +6000,24 @@ class EnhancedBot:
         user_id = query.from_user.id
         
         if not self.db.is_admin(user_id):
-            query.answer("❌ 仅管理员可以操作")
+            query.answer(self.t(user_id, TEXTS["proxy_panel_admin_only"]))
             return
         
         if data == "proxy_enable":
             # 启用代理
             if self.db.set_proxy_enabled(True, user_id):
-                query.answer("✅ 代理已启用")
+                query.answer(self.t(user_id, TEXTS["proxy_enabled_success"]))
                 self.refresh_proxy_panel(query)
             else:
-                query.answer("❌ 启用失败")
+                query.answer(self.t(user_id, TEXTS.get("proxy_enable_failed", TEXTS["language_change_failed"])))
         
         elif data == "proxy_disable":
             # 禁用代理
             if self.db.set_proxy_enabled(False, user_id):
-                query.answer("✅ 代理已禁用")
+                query.answer(self.t(user_id, TEXTS["proxy_disabled_success"]))
                 self.refresh_proxy_panel(query)
             else:
-                query.answer("❌ 禁用失败")
+                query.answer(self.t(user_id, TEXTS.get("proxy_disable_failed", TEXTS["language_change_failed"])))
         
         elif data == "proxy_reload":
             # 重新加载代理列表
@@ -5911,7 +6025,7 @@ class EnhancedBot:
             self.proxy_manager.load_proxies()
             new_count = len(self.proxy_manager.proxies)
             
-            query.answer(f"✅ 重新加载完成: {old_count}→{new_count}个代理")
+            query.answer(self.t(user_id, TEXTS["proxy_reload_success"], count=new_count))
             self.refresh_proxy_panel(query)
         
         elif data == "proxy_status":
@@ -6113,7 +6227,7 @@ class EnhancedBot:
         
         # 权限检查（仅管理员可访问）
         if not self.db.is_admin(user_id):
-            query.answer(get_text(user_lang, 'proxy', 'admin_only'))
+            query.answer(self.t(user_id, TEXTS["proxy_panel_admin_only"]))
             return
         
         query.answer()
@@ -6126,37 +6240,37 @@ class EnhancedBot:
         residential_count = sum(1 for p in self.proxy_manager.proxies if p.get('is_residential', False))
         
         # Get localized status texts
-        config_status = get_text(user_lang, 'proxy', 'use_proxy_true') if config.USE_PROXY else get_text(user_lang, 'proxy', 'use_proxy_false')
-        proxy_switch_status = get_text(user_lang, 'proxy', 'enabled') if proxy_enabled_db else get_text(user_lang, 'proxy', 'disabled')
-        actual_mode = get_text(user_lang, 'proxy', 'proxy_mode') if proxy_mode_active else get_text(user_lang, 'proxy', 'local_mode')
+        config_status = get_text_by_key(user_lang, 'proxy', 'use_proxy_true') if config.USE_PROXY else get_text_by_key(user_lang, 'proxy', 'use_proxy_false')
+        proxy_switch_status = get_text_by_key(user_lang, 'proxy', 'enabled') if proxy_enabled_db else get_text_by_key(user_lang, 'proxy', 'disabled')
+        actual_mode = get_text_by_key(user_lang, 'proxy', 'proxy_mode') if proxy_mode_active else get_text_by_key(user_lang, 'proxy', 'local_mode')
         
         # 构建代理管理面板信息
         proxy_text = f"""
-<b>{get_text(user_lang, 'proxy', 'title')}</b>
+<b>{get_text_by_key(user_lang, 'proxy', 'title')}</b>
 
-<b>{get_text(user_lang, 'proxy', 'current_status')}</b>
-{get_text(user_lang, 'proxy', 'system_config').format(config=config_status)}
-{get_text(user_lang, 'proxy', 'proxy_switch').format(status=proxy_switch_status)}
-{get_text(user_lang, 'proxy', 'proxy_file').format(file=config.PROXY_FILE)}
-{get_text(user_lang, 'proxy', 'available_proxies').format(count=len(self.proxy_manager.proxies))}
-{get_text(user_lang, 'proxy', 'residential_proxies').format(count=residential_count)}
-{get_text(user_lang, 'proxy', 'normal_timeout').format(timeout=config.PROXY_TIMEOUT)}
-{get_text(user_lang, 'proxy', 'residential_timeout').format(timeout=config.RESIDENTIAL_PROXY_TIMEOUT)}
-{get_text(user_lang, 'proxy', 'actual_mode').format(mode=actual_mode)}
+<b>{get_text_by_key(user_lang, 'proxy', 'current_status')}</b>
+{get_text_by_key(user_lang, 'proxy', 'system_config', config=config_status)}
+{get_text_by_key(user_lang, 'proxy', 'proxy_switch', status=proxy_switch_status)}
+{get_text_by_key(user_lang, 'proxy', 'proxy_file', file=config.PROXY_FILE)}
+{get_text_by_key(user_lang, 'proxy', 'available_proxies', count=len(self.proxy_manager.proxies))}
+{get_text_by_key(user_lang, 'proxy', 'residential_proxies', count=residential_count)}
+{get_text_by_key(user_lang, 'proxy', 'normal_timeout', timeout=config.PROXY_TIMEOUT)}
+{get_text_by_key(user_lang, 'proxy', 'residential_timeout', timeout=config.RESIDENTIAL_PROXY_TIMEOUT)}
+{get_text_by_key(user_lang, 'proxy', 'actual_mode', mode=actual_mode)}
 
-<b>{get_text(user_lang, 'proxy', 'format_support')}</b>
-{get_text(user_lang, 'proxy', 'http_format')}
-{get_text(user_lang, 'proxy', 'http_auth_format')}
-{get_text(user_lang, 'proxy', 'socks5_format')}
-{get_text(user_lang, 'proxy', 'socks4_format')}
-{get_text(user_lang, 'proxy', 'abc_format')}
+<b>{get_text_by_key(user_lang, 'proxy', 'format_support')}</b>
+{get_text_by_key(user_lang, 'proxy', 'http_format')}
+{get_text_by_key(user_lang, 'proxy', 'http_auth_format')}
+{get_text_by_key(user_lang, 'proxy', 'socks5_format')}
+{get_text_by_key(user_lang, 'proxy', 'socks4_format')}
+{get_text_by_key(user_lang, 'proxy', 'abc_format')}
 
-<b>{get_text(user_lang, 'proxy', 'operation_guide')}</b>
-{get_text(user_lang, 'proxy', 'enable_disable')}
-{get_text(user_lang, 'proxy', 'reload')}
-{get_text(user_lang, 'proxy', 'test')}
-{get_text(user_lang, 'proxy', 'view_status')}
-{get_text(user_lang, 'proxy', 'statistics')}
+<b>{get_text_by_key(user_lang, 'proxy', 'operation_guide')}</b>
+{get_text_by_key(user_lang, 'proxy', 'enable_disable')}
+{get_text_by_key(user_lang, 'proxy', 'reload')}
+{get_text_by_key(user_lang, 'proxy', 'test')}
+{get_text_by_key(user_lang, 'proxy', 'view_status')}
+{get_text_by_key(user_lang, 'proxy', 'statistics')}
         """
         
         # 创建操作按钮 - use localized labels
@@ -6164,22 +6278,22 @@ class EnhancedBot:
         
         # 代理开关控制按钮
         if proxy_enabled_db:
-            buttons.append([InlineKeyboardButton(get_text(user_lang, 'proxy', 'btn_disable'), callback_data="proxy_disable")])
+            buttons.append([InlineKeyboardButton(get_text_by_key(user_lang, 'proxy', 'btn_disable'), callback_data="proxy_disable")])
         else:
-            buttons.append([InlineKeyboardButton(get_text(user_lang, 'proxy', 'btn_enable'), callback_data="proxy_enable")])
+            buttons.append([InlineKeyboardButton(get_text_by_key(user_lang, 'proxy', 'btn_enable'), callback_data="proxy_enable")])
         
         # 代理管理操作按钮
         buttons.extend([
             [
-                InlineKeyboardButton(get_text(user_lang, 'proxy', 'btn_reload'), callback_data="proxy_reload"),
-                InlineKeyboardButton(get_text(user_lang, 'proxy', 'btn_status'), callback_data="proxy_status")
+                InlineKeyboardButton(get_text_by_key(user_lang, 'proxy', 'btn_reload'), callback_data="proxy_reload"),
+                InlineKeyboardButton(get_text_by_key(user_lang, 'proxy', 'btn_status'), callback_data="proxy_status")
             ],
             [
-                InlineKeyboardButton(get_text(user_lang, 'proxy', 'btn_test'), callback_data="proxy_test"),
+                InlineKeyboardButton(get_text_by_key(user_lang, 'proxy', 'btn_test'), callback_data="proxy_test"),
                 InlineKeyboardButton("📈 代理统计", callback_data="proxy_stats")
             ],
             [
-                InlineKeyboardButton(get_text(user_lang, 'proxy', 'btn_clean'), callback_data="proxy_cleanup"),
+                InlineKeyboardButton(get_text_by_key(user_lang, 'proxy', 'btn_clean'), callback_data="proxy_cleanup"),
                 InlineKeyboardButton("⚡ 速度优化", callback_data="proxy_optimize")
             ],
             [InlineKeyboardButton(get_menu_labels(user_lang)["back_main"], callback_data="back_to_main")]
@@ -11415,13 +11529,16 @@ class EnhancedBot:
         current_lang = self.db.get_user_lang(user_id)
         current_label = get_lang_label(current_lang)
         
+        title = self.t(user_id, TEXTS["language_selection_title"])
+        current_text = self.t(user_id, TEXTS["current_language"], lang=current_label)
+        prompt = self.t(user_id, TEXTS["select_language_prompt"])
+        
         text = f"""
-<b>🌐 选择语言 / Language Selection</b>
+{title}
 
-当前语言 / Current: {current_label}
+{current_text}
 
-请选择您喜欢的语言：
-Please select your preferred language:
+{prompt}
         """
         
         # 创建语言选择按钮
@@ -11435,7 +11552,8 @@ Please select your preferred language:
             buttons.append([InlineKeyboardButton(button_text, callback_data=f"set_lang_{lang_code}")])
         
         # 添加返回按钮
-        buttons.append([InlineKeyboardButton("🔙 返回 / Back", callback_data="back_to_main")])
+        back_text = self.t(user_id, TEXTS["back_button"])
+        buttons.append([InlineKeyboardButton(back_text, callback_data="back_to_main")])
         
         keyboard = InlineKeyboardMarkup(buttons)
         
@@ -11459,12 +11577,14 @@ Please select your preferred language:
         # 设置用户语言
         if self.db.set_user_lang(user_id, lang_code):
             lang_label = get_lang_label(lang_code)
-            query.answer(f"✅ 语言已切换到 {lang_label}", show_alert=False)
+            success_msg = self.t_by_lang(lang_code, TEXTS["language_changed"], lang=lang_label)
+            query.answer(success_msg, show_alert=False)
             
             # 刷新主菜单显示新语言
             self.show_main_menu(update, user_id)
         else:
-            query.answer("❌ 设置语言失败", show_alert=True)
+            fail_msg = self.t(user_id, TEXTS["language_change_failed"])
+            query.answer(fail_msg, show_alert=True)
     
     def run(self):
         print("🚀 启动增强版机器人（速度优化版）...")
