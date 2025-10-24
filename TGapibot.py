@@ -5331,38 +5331,17 @@ class EnhancedBot:
         # 权限检查
         is_member, level, _ = self.db.check_membership(user_id)
         if not is_member and not self.db.is_admin(user_id):
-            self.safe_send_message(update, "❌ 需要会员权限才能使用API转换功能")
+            self.safe_send_message(update, self.t(user_id, TEXTS["need_membership"]))
             return
 
         if not 'FLASK_AVAILABLE' in globals() or not FLASK_AVAILABLE:
-            self.safe_send_message(update, "❌ API转换功能不可用\n\n原因: Flask库未安装\n💡 请安装: pip install flask jinja2")
+            self.safe_send_message(update, self.t(user_id, TEXTS["api_feature_unavailable"]))
             return
 
-        text = """
-🔗 <b>API格式转换功能</b>
-
-<b>📱 功能说明</b>
-• 将TData/Session转换为API格式
-• 生成专属验证码接收链接
-• 自动提取手机号和2FA密码
-• 实时转发短信验证码
-
-<b>📋 输出格式</b>
-• JSON格式（开发者友好）
-• CSV格式（Excel可打开）
-• TXT格式（便于查看）
-
-<b>🌐 验证码接收</b>
-• 每个账号生成独立网页链接
-• 自动刷新显示最新验证码
-• 5分钟自动过期保护
-
-<b>📤 操作说明</b>
-请上传包含TData或Session文件的ZIP压缩包...
-        """
+        text = self.t(user_id, TEXTS["api_function_details"])
 
         buttons = [
-            [InlineKeyboardButton("🔙 返回主菜单", callback_data="back_to_main")]
+            [InlineKeyboardButton(self.t(user_id, TEXTS["back_to_main_menu"]), callback_data="back_to_main")]
         ]
 
         keyboard = InlineKeyboardMarkup(buttons)
@@ -5384,36 +5363,14 @@ class EnhancedBot:
         # 权限检查
         is_member, level, _ = self.db.check_membership(user_id)
         if not is_member and not self.db.is_admin(user_id):
-            self.safe_edit_message(query, "❌ 需要会员权限才能使用API转换功能")
+            self.safe_edit_message(query, self.t(user_id, TEXTS["need_membership"]))
             return
 
         if not 'FLASK_AVAILABLE' in globals() or not FLASK_AVAILABLE:
-            self.safe_edit_message(query, "❌ API转换功能不可用\n\n原因: Flask库未安装\n💡 请安装: pip install flask jinja2")
+            self.safe_edit_message(query, self.t(user_id, TEXTS["api_feature_unavailable"]))
             return
 
-        text = """
-🔗 <b>API格式转换</b>
-
-<b>🎯 核心功能</b>
-• 📱 提取手机号信息
-• 🔐 自动检测2FA密码
-• 🌐 生成验证码接收链接
-• 📋 输出标准API格式
-
-<b>🌐 验证码接收特性</b>
-• 每个账号生成独立验证链接
-• 实时显示验证码，自动刷新
-• 支持HTTP API调用获取验证码
-• 5分钟自动过期保护
-
-<b>📤 使用方法</b>
-1. 上传ZIP文件（包含TData或Session）
-2. 系统自动分析账号信息
-3. 生成API格式文件和验证链接
-4. 下载结果使用
-
-请上传您的文件...
-        """
+        text = self.t(user_id, TEXTS["api_function_details"])
 
         self.safe_edit_message(query, text, 'HTML')
 
@@ -5494,18 +5451,11 @@ class EnhancedBot:
         user_id = update.effective_user.id
         
         if not self.db.is_admin(user_id):
-            self.safe_send_message(update, "❌ 仅管理员可以使用此命令")
+            self.safe_send_message(update, self.t(user_id, TEXTS["admin_only_access"]))
             return
         
         if not context.args:
-            self.safe_send_message(update, 
-                "📝 使用方法:\n"
-                "/addadmin [用户ID]\n"
-                "/addadmin [用户名]\n\n"
-                "示例:\n"
-                "/addadmin 123456789\n"
-                "/addadmin @username"
-            )
+            self.safe_send_message(update, self.t(user_id, TEXTS["addadmin_usage"]))
             return
         
         target = context.args[0].strip()
@@ -5520,85 +5470,79 @@ class EnhancedBot:
             target = target.replace("@", "")
             user_info = self.db.get_user_by_username(target)
             if not user_info:
-                self.safe_send_message(update, f"❌ 找不到用户名 @{target}\n请确保用户已使用过机器人")
+                self.safe_send_message(update, self.t(user_id, TEXTS["admin_user_not_found"], username=target))
                 return
             
             target_user_id, target_username, target_first_name = user_info
         
         # 检查是否已经是管理员
         if self.db.is_admin(target_user_id):
-            self.safe_send_message(update, f"⚠️ 用户 {target_user_id} 已经是管理员")
+            self.safe_send_message(update, self.t(user_id, TEXTS["admin_already_admin"], user_id=target_user_id))
             return
         
         # 添加管理员
         if self.db.add_admin(target_user_id, target_username, target_first_name, user_id):
-            self.safe_send_message(update, 
-                f"✅ 成功添加管理员\n\n"
-                f"👤 用户ID: {target_user_id}\n"
-                f"📝 用户名: @{target_username}\n"
-                f"🏷️ 昵称: {target_first_name}\n"
-                f"⏰ 添加时间: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
-            )
+            self.safe_send_message(update, self.t(user_id, TEXTS["admin_add_details"],
+                user_id=target_user_id,
+                username=target_username,
+                first_name=target_first_name,
+                time=datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+            ))
         else:
-            self.safe_send_message(update, "❌ 添加管理员失败")
+            self.safe_send_message(update, self.t(user_id, TEXTS["error_add_admin_failed"]))
     
     def remove_admin_command(self, update: Update, context: CallbackContext):
         """移除管理员命令"""
         user_id = update.effective_user.id
         
         if not self.db.is_admin(user_id):
-            self.safe_send_message(update, "❌ 仅管理员可以使用此命令")
+            self.safe_send_message(update, self.t(user_id, TEXTS["admin_only_access"]))
             return
         
         if not context.args:
-            self.safe_send_message(update, 
-                "📝 使用方法:\n"
-                "/removeadmin [用户ID]\n\n"
-                "示例:\n"
-                "/removeadmin 123456789"
-            )
+            self.safe_send_message(update, self.t(user_id, TEXTS["removeadmin_usage"]))
             return
         
         try:
             target_user_id = int(context.args[0])
         except ValueError:
-            self.safe_send_message(update, "❌ 请提供有效的用户ID")
+            self.safe_send_message(update, self.t(user_id, TEXTS["error_invalid_user_id"]))
             return
         
         # 不能移除配置文件中的管理员
         if target_user_id in config.ADMIN_IDS:
-            self.safe_send_message(update, "❌ 无法移除配置文件中的管理员")
+            self.safe_send_message(update, self.t(user_id, TEXTS["admin_cannot_remove_config"]))
             return
         
         # 不能移除自己
         if target_user_id == user_id:
-            self.safe_send_message(update, "❌ 无法移除自己的管理员权限")
+            self.safe_send_message(update, self.t(user_id, TEXTS["admin_cannot_remove_self"]))
             return
         
         if not self.db.is_admin(target_user_id):
-            self.safe_send_message(update, f"⚠️ 用户 {target_user_id} 不是管理员")
+            self.safe_send_message(update, self.t(user_id, TEXTS["admin_not_admin"], user_id=target_user_id))
             return
         
         if self.db.remove_admin(target_user_id):
-            self.safe_send_message(update, f"✅ 已移除管理员: {target_user_id}")
+            self.safe_send_message(update, self.t(user_id, TEXTS["admin_remove_success"], user_id=target_user_id))
         else:
-            self.safe_send_message(update, "❌ 移除管理员失败")
+            self.safe_send_message(update, self.t(user_id, TEXTS["error_remove_admin_failed"]))
     
     def list_admins_command(self, update: Update, context: CallbackContext):
         """查看管理员列表命令"""
         user_id = update.effective_user.id
         
         if not self.db.is_admin(user_id):
-            self.safe_send_message(update, "❌ 仅管理员可以使用此命令")
+            self.safe_send_message(update, self.t(user_id, TEXTS["admin_only_access"]))
             return
         
         admins = self.db.get_all_admins()
         
         if not admins:
-            self.safe_send_message(update, "📝 暂无管理员")
+            self.safe_send_message(update, self.t(user_id, TEXTS["admin_list_empty"]))
             return
         
-        admin_text = "<b>👑 管理员列表</b>\n\n"
+        admin_text = self.t(user_id, TEXTS["admin_list_title"])
         
         for i, (admin_id, username, first_name, added_time) in enumerate(admins, 1):
             admin_text += f"<b>{i}.</b> "
@@ -5615,7 +5559,7 @@ class EnhancedBot:
                 admin_text += f"   ⏰ {added_time}\n"
             admin_text += "\n"
         
-        admin_text += f"<b>📊 总计: {len(admins)} 个管理员</b>"
+        admin_text += self.t(user_id, TEXTS["admin_list_total"], count=len(admins))
         
         self.safe_send_message(update, admin_text, 'HTML')
     
@@ -5624,7 +5568,7 @@ class EnhancedBot:
         user_id = update.effective_user.id
         
         if not self.db.is_admin(user_id):
-            self.safe_send_message(update, "❌ 仅管理员可以使用此命令")
+            self.safe_send_message(update, self.t(user_id, TEXTS["admin_only_access"]))
             return
         
         # 获取当前代理状态
@@ -5682,7 +5626,7 @@ class EnhancedBot:
         if context.args:
             if context.args[0] == "reload":
                 self.proxy_manager.load_proxies()
-                self.safe_send_message(update, f"✅ 已重新加载代理文件\n📡 新代理数量: {len(self.proxy_manager.proxies)}个")
+                self.safe_send_message(update, self.t(user_id, TEXTS["proxy_reload_count"], count=len(self.proxy_manager.proxies)))
                 return
             elif context.args[0] == "status":
                 self.show_proxy_detailed_status(update)
@@ -5710,18 +5654,18 @@ class EnhancedBot:
             
             self.safe_send_message(update, status_text, 'HTML')
         else:
-            self.safe_send_message(update, "❌ 没有可用的代理")
+            self.safe_send_message(update, self.t(user_id, TEXTS["proxy_no_available"]))
     
     def test_proxy_command(self, update: Update, context: CallbackContext):
         """测试代理命令"""
         user_id = update.effective_user.id
         
         if not self.db.is_admin(user_id):
-            self.safe_send_message(update, "❌ 仅管理员可以使用此命令")
+            self.safe_send_message(update, self.t(user_id, TEXTS["admin_only_access"]))
             return
         
         if not self.proxy_manager.proxies:
-            self.safe_send_message(update, "❌ 没有可用的代理进行测试")
+            self.safe_send_message(update, self.t(user_id, TEXTS["proxy_no_test"]))
             return
         
         # 异步处理代理测试
@@ -5812,11 +5756,11 @@ class EnhancedBot:
         user_id = update.effective_user.id
         
         if not self.db.is_admin(user_id):
-            self.safe_send_message(update, "❌ 仅管理员可以使用此命令")
+            self.safe_send_message(update, self.t(user_id, TEXTS["admin_only_access"]))
             return
         
         if not self.proxy_manager.proxies:
-            self.safe_send_message(update, "❌ 没有可用的代理进行清理")
+            self.safe_send_message(update, self.t(user_id, TEXTS["proxy_no_cleanup"]))
             return
         
         # 检查是否有确认参数
@@ -6418,7 +6362,7 @@ class EnhancedBot:
         # 检查权限
         is_member, level, _ = self.db.check_membership(user_id)
         if not is_member and not self.db.is_admin(user_id):
-            self.safe_edit_message(query, "❌ 需要会员权限才能使用检测功能")
+            self.safe_edit_message(query, self.t(user_id, TEXTS["need_membership"]))
             return
         
         if not TELETHON_AVAILABLE:
@@ -6455,11 +6399,11 @@ class EnhancedBot:
         # 检查权限
         is_member, level, _ = self.db.check_membership(user_id)
         if not is_member and not self.db.is_admin(user_id):
-            self.safe_edit_message(query, "❌ 需要会员权限才能使用格式转换功能")
+            self.safe_edit_message(query, self.t(user_id, TEXTS["need_membership"]))
             return
         
         if not OPENTELE_AVAILABLE:
-            self.safe_edit_message(query, "❌ 格式转换功能不可用\n\n原因: opentele库未安装\n💡 请安装: pip install opentele")
+            self.safe_edit_message(query, self.t(user_id, TEXTS["convert_feature_unavailable"]))
             return
         
         text = """
@@ -6563,7 +6507,7 @@ class EnhancedBot:
         # 检查权限
         is_member, level, _ = self.db.check_membership(user_id)
         if not is_member and not self.db.is_admin(user_id):
-            self.safe_edit_message(query, "❌ 需要会员权限才能使用2FA修改功能")
+            self.safe_edit_message(query, self.t(user_id, TEXTS["need_membership"]))
             return
         
         if not TELETHON_AVAILABLE:
@@ -7155,7 +7099,7 @@ class EnhancedBot:
 
         is_member, _, _ = self.db.check_membership(user_id)
         if not is_member and not self.db.is_admin(user_id):
-            self.safe_send_message(update, "❌ 需要会员权限")
+            self.safe_send_message(update, self.t(user_id, TEXTS["need_membership"]))
             return
 
         if document.file_size > 100 * 1024 * 1024:
@@ -8654,7 +8598,7 @@ class EnhancedBot:
         # 权限检查
         is_member, _, _ = self.db.check_membership(user_id)
         if not is_member and not self.db.is_admin(user_id):
-            self.safe_send_message(update, "❌ 需要会员权限才能使用账号分类功能")
+            self.safe_send_message(update, self.t(user_id, TEXTS["need_membership"]))
             return
         
         if not CLASSIFY_AVAILABLE or not self.classifier:
@@ -8674,9 +8618,9 @@ class EnhancedBot:
         is_member, _, _ = self.db.check_membership(user_id)
         if not is_member and not self.db.is_admin(user_id):
             if query:
-                self.safe_edit_message(query, "❌ 需要会员权限")
+                self.safe_edit_message(query, self.t(user_id, TEXTS["need_membership"]))
             else:
-                self.safe_send_message(update, "❌ 需要会员权限")
+                self.safe_send_message(update, self.t(user_id, TEXTS["need_membership"]))
             return
         
         if not CLASSIFY_AVAILABLE or not self.classifier:

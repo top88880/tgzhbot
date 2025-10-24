@@ -881,6 +881,579 @@ TEXTS = {
         "ar": "🔄 معالجة الملف...",
         "vi": "🔄 Đang xử lý tệp..."
     },
+    # API conversion messages (expanded)
+    "api_feature_unavailable": {
+        "zh-CN": "❌ API转换功能不可用\n\n原因: Flask库未安装\n💡 请安装: pip install flask jinja2",
+        "en-US": "❌ API conversion feature unavailable\n\nReason: Flask library not installed\n💡 Please install: pip install flask jinja2",
+        "ru": "❌ Функция API-конвертации недоступна\n\nПричина: Библиотека Flask не установлена\n💡 Пожалуйста, установите: pip install flask jinja2",
+        "my": "❌ API ပြောင်းလဲမှု လုပ်ဆောင်ချက် မရရှိနိုင်ပါ\n\nအကြောင်းအရင်း: Flask library မတင်ထားပါ\n💡 ကျေးဇူးပြု၍ တင်ပါ: pip install flask jinja2",
+        "bn": "❌ API রূপান্তর বৈশিষ্ট্য উপলব্ধ নয়\n\nকারণ: Flask লাইব্রেরি ইনস্টল করা নেই\n💡 অনুগ্রহ করে ইনস্টল করুন: pip install flask jinja2",
+        "ar": "❌ ميزة تحويل API غير متاحة\n\nالسبب: مكتبة Flask غير مثبتة\n💡 يرجى التثبيت: pip install flask jinja2",
+        "vi": "❌ Tính năng chuyển đổi API không khả dụng\n\nLý do: Thư viện Flask chưa được cài đặt\n💡 Vui lòng cài đặt: pip install flask jinja2"
+    },
+    "api_function_description": {
+        "zh-CN": "🔗 <b>API格式转换功能</b>\n\n<b>📱 功能说明</b>\n• 将TData/Session转换为API格式\n• 生成专属验证码接收链接\n• 自动提取手机号和2FA密码\n• 实时转发短信验证码",
+        "en-US": "🔗 <b>API Format Conversion</b>\n\n<b>📱 Feature Description</b>\n• Convert TData/Session to API format\n• Generate dedicated verification code link\n• Auto-extract phone number and 2FA password\n• Real-time SMS verification forwarding",
+        "ru": "🔗 <b>API-конвертация</b>\n\n<b>📱 Описание функции</b>\n• Преобразование TData/Session в формат API\n• Генерация специальной ссылки для получения кода\n• Автоматическое извлечение номера телефона и 2FA пароля\n• Пересылка SMS кодов в реальном времени",
+        "my": "🔗 <b>API ဖော်မတ်ပြောင်းခြင်း</b>\n\n<b>📱 လုပ်ဆောင်ချက် ဖော်ပြချက်</b>\n• TData/Session ကို API ဖော်မတ်သို့ ပြောင်းခြင်း\n• အထူး အတည်ပြုကုဒ် လင့်ခ် ဖန်တီးခြင်း\n• ဖုန်းနံပါတ်နှင့် 2FA စကားဝှက်ကို အလိုအလျောက် ထုတ်ယူခြင်း\n• SMS အတည်ပြုကုဒ်များကို အချိန်နှင့်တပြေးညီ ပေးပို့ခြင်း",
+        "bn": "🔗 <b>API ফরম্যাট রূপান্তর</b>\n\n<b>📱 বৈশিষ্ট্যের বিবরণ</b>\n• TData/Session কে API ফরম্যাটে রূপান্তর করুন\n• ডেডিকেটেড ভেরিফিকেশন কোড লিংক তৈরি করুন\n• ফোন নম্বর এবং 2FA পাসওয়ার্ড স্বয়ংক্রিয়ভাবে এক্সট্র্যাক্ট করুন\n• রিয়েল-টাইম SMS ভেরিফিকেশন ফরওয়ার্ডিং",
+        "ar": "🔗 <b>تحويل تنسيق API</b>\n\n<b>📱 وصف الميزة</b>\n• تحويل TData/Session إلى تنسيق API\n• إنشاء رابط رمز التحقق المخصص\n• استخراج رقم الهاتف وكلمة مرور 2FA تلقائيًا\n• إعادة توجيه رمز التحقق عبر الرسائل القصيرة في الوقت الفعلي",
+        "vi": "🔗 <b>Chuyển đổi định dạng API</b>\n\n<b>📱 Mô tả tính năng</b>\n• Chuyển đổi TData/Session sang định dạng API\n• Tạo liên kết mã xác minh chuyên dụng\n• Tự động trích xuất số điện thoại và mật khẩu 2FA\n• Chuyển tiếp mã xác minh SMS theo thời gian thực"
+    },
+    # Admin panel messages (expanded)
+    "admin_stats_title": {
+        "zh-CN": "📊 <b>统计数据</b>",
+        "en-US": "📊 <b>Statistics</b>",
+        "ru": "📊 <b>Статистика</b>",
+        "my": "📊 <b>စာရင်းအင်းများ</b>",
+        "bn": "📊 <b>পরিসংখ্যান</b>",
+        "ar": "📊 <b>الإحصائيات</b>",
+        "vi": "📊 <b>Thống kê</b>"
+    },
+    "admin_user_management": {
+        "zh-CN": "👥 用户管理",
+        "en-US": "👥 User Management",
+        "ru": "👥 Управление пользователями",
+        "my": "👥 အသုံးပြုသူ စီမံခန့်ခွဲမှု",
+        "bn": "👥 ব্যবহারকারী ব্যবস্থাপনা",
+        "ar": "👥 إدارة المستخدمين",
+        "vi": "👥 Quản lý người dùng"
+    },
+    "admin_broadcast": {
+        "zh-CN": "📢 群发消息",
+        "en-US": "📢 Broadcast",
+        "ru": "📢 Массовая рассылка",
+        "my": "📢 အစုလိုက်မက်ဆေ့ချ်",
+        "bn": "📢 ব্রডকাস্ট",
+        "ar": "📢 البث",
+        "vi": "📢 Quảng bá"
+    },
+    "admin_code_management": {
+        "zh-CN": "🎫 兑换码管理",
+        "en-US": "🎫 Redeem Code Management",
+        "ru": "🎫 Управление кодами",
+        "my": "🎫 Redeem ကုဒ် စီမံခန့်ခွဲမှု",
+        "bn": "🎫 রিডিম কোড ব্যবস্থাপনা",
+        "ar": "🎫 إدارة رموز الاسترداد",
+        "vi": "🎫 Quản lý mã đổi thưởng"
+    },
+    "admin_add_success": {
+        "zh-CN": "✅ 成功添加管理员: {username} (ID: {user_id})",
+        "en-US": "✅ Successfully added admin: {username} (ID: {user_id})",
+        "ru": "✅ Успешно добавлен администратор: {username} (ID: {user_id})",
+        "my": "✅ စီမံခန့်ခွဲသူ အောင်မြင်စွာ ထည့်သွင်းပြီးပါပြီ: {username} (ID: {user_id})",
+        "bn": "✅ সফলভাবে প্রশাসক যোগ করা হয়েছে: {username} (ID: {user_id})",
+        "ar": "✅ تمت إضافة المسؤول بنجاح: {username} (ID: {user_id})",
+        "vi": "✅ Đã thêm quản trị viên thành công: {username} (ID: {user_id})"
+    },
+    "admin_remove_success": {
+        "zh-CN": "✅ 已移除管理员: {user_id}",
+        "en-US": "✅ Removed admin: {user_id}",
+        "ru": "✅ Администратор удален: {user_id}",
+        "my": "✅ စီမံခန့်ခွဲသူကို ဖယ်ရှားပြီးပါပြီ: {user_id}",
+        "bn": "✅ প্রশাসক সরানো হয়েছে: {user_id}",
+        "ar": "✅ تمت إزالة المسؤول: {user_id}",
+        "vi": "✅ Đã xóa quản trị viên: {user_id}"
+    },
+    "admin_already_admin": {
+        "zh-CN": "⚠️ 用户 {user_id} 已经是管理员",
+        "en-US": "⚠️ User {user_id} is already an admin",
+        "ru": "⚠️ Пользователь {user_id} уже является администратором",
+        "my": "⚠️ အသုံးပြုသူ {user_id} သည် စီမံခန့်ခွဲသူ ဖြစ်နေပြီးဖြစ်သည်",
+        "bn": "⚠️ ব্যবহারকারী {user_id} ইতিমধ্যে একজন প্রশাসক",
+        "ar": "⚠️ المستخدم {user_id} مسؤول بالفعل",
+        "vi": "⚠️ Người dùng {user_id} đã là quản trị viên"
+    },
+    "admin_not_admin": {
+        "zh-CN": "⚠️ 用户 {user_id} 不是管理员",
+        "en-US": "⚠️ User {user_id} is not an admin",
+        "ru": "⚠️ Пользователь {user_id} не является администратором",
+        "my": "⚠️ အသုံးပြုသူ {user_id} သည် စီမံခန့်ခွဲသူ မဟုတ်ပါ",
+        "bn": "⚠️ ব্যবহারকারী {user_id} একজন প্রশাসক নয়",
+        "ar": "⚠️ المستخدم {user_id} ليس مسؤولاً",
+        "vi": "⚠️ Người dùng {user_id} không phải quản trị viên"
+    },
+    "admin_user_not_found": {
+        "zh-CN": "❌ 找不到用户名 @{username}\n请确保用户已使用过机器人",
+        "en-US": "❌ Username @{username} not found\nPlease ensure the user has used the bot",
+        "ru": "❌ Имя пользователя @{username} не найдено\nПожалуйста, убедитесь, что пользователь использовал бота",
+        "my": "❌ အသုံးပြုသူအမည် @{username} ကို ရှာမတွေ့ပါ\nအသုံးပြုသူသည် bot ကို အသုံးပြုခဲ့ကြောင်း သေချာပါစေ",
+        "bn": "❌ ব্যবহারকারীর নাম @{username} পাওয়া যায়নি\nঅনুগ্রহ করে নিশ্চিত করুন যে ব্যবহারকারী বট ব্যবহার করেছেন",
+        "ar": "❌ لم يتم العثور على اسم المستخدم @{username}\nيرجى التأكد من أن المستخدم قد استخدم البوت",
+        "vi": "❌ Không tìm thấy tên người dùng @{username}\nVui lòng đảm bảo người dùng đã sử dụng bot"
+    },
+    "admin_cannot_remove_config": {
+        "zh-CN": "❌ 无法移除配置文件中的管理员",
+        "en-US": "❌ Cannot remove admin from config file",
+        "ru": "❌ Невозможно удалить администратора из файла конфигурации",
+        "my": "❌ config ဖိုင်ထဲမှ စီမံခန့်ခွဲသူကို ဖယ်ရှားလို့ မရပါ",
+        "bn": "❌ কনফিগ ফাইল থেকে প্রশাসক সরানো যাবে না",
+        "ar": "❌ لا يمكن إزالة المسؤول من ملف التكوين",
+        "vi": "❌ Không thể xóa quản trị viên khỏi tệp cấu hình"
+    },
+    "admin_cannot_remove_self": {
+        "zh-CN": "❌ 无法移除自己的管理员权限",
+        "en-US": "❌ Cannot remove your own admin privileges",
+        "ru": "❌ Невозможно удалить собственные права администратора",
+        "my": "❌ သင့်ကိုယ်ပိုင် စီမံခန့်ခွဲမှု အခွင့်အရေးများကို ဖယ်ရှားလို့ မရပါ",
+        "bn": "❌ আপনার নিজের প্রশাসক সুবিধা সরাতে পারবেন না",
+        "ar": "❌ لا يمكنك إزالة امتيازات المسؤول الخاصة بك",
+        "vi": "❌ Không thể xóa quyền quản trị viên của chính bạn"
+    },
+    "admin_list_empty": {
+        "zh-CN": "📝 暂无管理员",
+        "en-US": "📝 No admins yet",
+        "ru": "📝 Администраторов пока нет",
+        "my": "📝 စီမံခန့်ခွဲသူများ မရှိသေးပါ",
+        "bn": "📝 এখনও কোন প্রশাসক নেই",
+        "ar": "📝 لا يوجد مسؤولون بعد",
+        "vi": "📝 Chưa có quản trị viên"
+    },
+    # Convert feature messages
+    "convert_feature_unavailable": {
+        "zh-CN": "❌ 格式转换功能不可用\n\n原因: opentele库未安装\n💡 请安装: pip install opentele",
+        "en-US": "❌ Format conversion feature unavailable\n\nReason: opentele library not installed\n💡 Please install: pip install opentele",
+        "ru": "❌ Функция преобразования формата недоступна\n\nПричина: Библиотека opentele не установлена\n💡 Пожалуйста, установите: pip install opentele",
+        "my": "❌ ဖော်မတ်ပြောင်းလဲမှု လုပ်ဆောင်ချက် မရရှိနိုင်ပါ\n\nအကြောင်းအရင်း: opentele library မတင်ထားပါ\n💡 ကျေးဇူးပြု၍ တင်ပါ: pip install opentele",
+        "bn": "❌ ফরম্যাট রূপান্তর বৈশিষ্ট্য উপলব্ধ নয়\n\nকারণ: opentele লাইব্রেরি ইনস্টল করা নেই\n💡 অনুগ্রহ করে ইনস্টল করুন: pip install opentele",
+        "ar": "❌ ميزة تحويل التنسيق غير متاحة\n\nالسبب: مكتبة opentele غير مثبتة\n💡 يرجى التثبيت: pip install opentele",
+        "vi": "❌ Tính năng chuyển đổi định dạng không khả dụng\n\nLý do: Thư viện opentele chưa được cài đặt\n💡 Vui lòng cài đặt: pip install opentele"
+    },
+    # Error messages
+    "error_generic": {
+        "zh-CN": "❌ 发生错误: {error}",
+        "en-US": "❌ Error occurred: {error}",
+        "ru": "❌ Произошла ошибка: {error}",
+        "my": "❌ အမှားအယွင်း ဖြစ်ပွားခဲ့သည်: {error}",
+        "bn": "❌ ত্রুটি ঘটেছে: {error}",
+        "ar": "❌ حدث خطأ: {error}",
+        "vi": "❌ Đã xảy ra lỗi: {error}"
+    },
+    "error_operation_failed": {
+        "zh-CN": "❌ 操作失败",
+        "en-US": "❌ Operation failed",
+        "ru": "❌ Операция не удалась",
+        "my": "❌ လုပ်ဆောင်မှု မအောင်မြင်ပါ",
+        "bn": "❌ অপারেশন ব্যর্থ হয়েছে",
+        "ar": "❌ فشلت العملية",
+        "vi": "❌ Thao tác thất bại"
+    },
+    "error_add_admin_failed": {
+        "zh-CN": "❌ 添加管理员失败",
+        "en-US": "❌ Failed to add admin",
+        "ru": "❌ Не удалось добавить администратора",
+        "my": "❌ စီမံခန့်ခွဲသူ ထည့်ရန် မအောင်မြင်ပါ",
+        "bn": "❌ প্রশাসক যোগ করতে ব্যর্থ হয়েছে",
+        "ar": "❌ فشل في إضافة المسؤول",
+        "vi": "❌ Không thể thêm quản trị viên"
+    },
+    "error_remove_admin_failed": {
+        "zh-CN": "❌ 移除管理员失败",
+        "en-US": "❌ Failed to remove admin",
+        "ru": "❌ Не удалось удалить администратора",
+        "my": "❌ စီမံခန့်ခွဲသူကို ဖယ်ရှားရန် မအောင်မြင်ပါ",
+        "bn": "❌ প্রশাসক সরাতে ব্যর্থ হয়েছে",
+        "ar": "❌ فشل في إزالة المسؤول",
+        "vi": "❌ Không thể xóa quản trị viên"
+    },
+    "error_invalid_user_id": {
+        "zh-CN": "❌ 请提供有效的用户ID",
+        "en-US": "❌ Please provide a valid user ID",
+        "ru": "❌ Пожалуйста, укажите действительный ID пользователя",
+        "my": "❌ ကျေးဇူးပြု၍ တရားဝင် အသုံးပြုသူ ID တစ်ခု ပေးပါ",
+        "bn": "❌ অনুগ্রহ করে একটি বৈধ ব্যবহারকারী ID প্রদান করুন",
+        "ar": "❌ يرجى تقديم معرف مستخدم صالح",
+        "vi": "❌ Vui lòng cung cấp ID người dùng hợp lệ"
+    },
+    # Proxy reload message
+    "proxy_reload_count": {
+        "zh-CN": "✅ 已重新加载代理文件\n📡 新代理数量: {count}个",
+        "en-US": "✅ Proxy file reloaded\n📡 New proxy count: {count}",
+        "ru": "✅ Файл прокси перезагружен\n📡 Новое количество прокси: {count}",
+        "my": "✅ Proxy ဖိုင်ကို ပြန်လည်တင်ပြီးပါပြီ\n📡 Proxy အသစ် အရေအတွက်: {count}",
+        "bn": "✅ প্রক্সি ফাইল পুনরায় লোড হয়েছে\n📡 নতুন প্রক্সি সংখ্যা: {count}",
+        "ar": "✅ تم إعادة تحميل ملف البروكسي\n📡 عدد البروكسي الجديد: {count}",
+        "vi": "✅ Đã tải lại tệp proxy\n📡 Số lượng proxy mới: {count}"
+    },
+    "proxy_test_failed": {
+        "zh-CN": "❌ 代理测试失败: {error}",
+        "en-US": "❌ Proxy test failed: {error}",
+        "ru": "❌ Тест прокси не удался: {error}",
+        "my": "❌ Proxy စမ်းသပ်မှု မအောင်မြင်ပါ: {error}",
+        "bn": "❌ প্রক্সি পরীক্ষা ব্যর্থ হয়েছে: {error}",
+        "ar": "❌ فشل اختبار البروكسي: {error}",
+        "vi": "❌ Kiểm tra proxy thất bại: {error}"
+    },
+    "proxy_cleanup_cancelled": {
+        "zh-CN": "❌ 代理清理已取消",
+        "en-US": "❌ Proxy cleanup cancelled",
+        "ru": "❌ Очистка прокси отменена",
+        "my": "❌ Proxy ရှင်းလင်းမှုကို ပယ်ဖျက်လိုက်ပါပြီ",
+        "bn": "❌ প্রক্সি পরিষ্কার বাতিল করা হয়েছে",
+        "ar": "❌ تم إلغاء تنظيف البروكسي",
+        "vi": "❌ Đã hủy dọn dẹp proxy"
+    },
+    "proxy_cleanup_failed": {
+        "zh-CN": "❌ 代理清理过程失败: {error}",
+        "en-US": "❌ Proxy cleanup process failed: {error}",
+        "ru": "❌ Процесс очистки прокси не удался: {error}",
+        "my": "❌ Proxy ရှင်းလင်းမှု လုပ်ငန်းစဉ် မအောင်မြင်ပါ: {error}",
+        "bn": "❌ প্রক্সি পরিষ্কার প্রক্রিয়া ব্যর্থ হয়েছে: {error}",
+        "ar": "❌ فشلت عملية تنظيف البروكسي: {error}",
+        "vi": "❌ Quá trình dọn dẹp proxy thất bại: {error}"
+    },
+    "get_test_proxy_failed": {
+        "zh-CN": "❌ 获取测试代理失败",
+        "en-US": "❌ Failed to get test proxy",
+        "ru": "❌ Не удалось получить тестовый прокси",
+        "my": "❌ စမ်းသပ်မည့် proxy ရရန် မအောင်မြင်ပါ",
+        "bn": "❌ টেস্ট প্রক্সি পেতে ব্যর্থ হয়েছে",
+        "ar": "❌ فشل في الحصول على بروكسي الاختبار",
+        "vi": "❌ Không thể lấy proxy thử nghiệm"
+    },
+    # API function detailed description
+    "api_function_details": {
+        "zh-CN": """🔗 <b>API格式转换功能</b>
+
+<b>📱 功能说明</b>
+• 将TData/Session转换为API格式
+• 生成专属验证码接收链接
+• 自动提取手机号和2FA密码
+• 实时转发短信验证码
+
+<b>📋 输出格式</b>
+• JSON格式（开发者友好）
+• CSV格式（Excel可打开）
+• TXT格式（便于查看）
+
+<b>🌐 验证码接收</b>
+• 每个账号生成独立网页链接
+• 自动刷新显示最新验证码
+• 5分钟自动过期保护
+
+<b>📤 操作说明</b>
+请上传包含TData或Session文件的ZIP压缩包...""",
+        "en-US": """🔗 <b>API Format Conversion</b>
+
+<b>📱 Feature Description</b>
+• Convert TData/Session to API format
+• Generate dedicated verification code link
+• Auto-extract phone number and 2FA password
+• Real-time SMS verification forwarding
+
+<b>📋 Output Format</b>
+• JSON format (developer-friendly)
+• CSV format (Excel compatible)
+• TXT format (easy to view)
+
+<b>🌐 Verification Code Reception</b>
+• Independent web link for each account
+• Auto-refresh to show latest code
+• 5-minute auto-expiration protection
+
+<b>📤 Instructions</b>
+Please upload ZIP file containing TData or Session files...""",
+        "ru": """🔗 <b>API-конвертация</b>
+
+<b>📱 Описание функции</b>
+• Преобразование TData/Session в формат API
+• Генерация специальной ссылки для получения кода
+• Автоматическое извлечение номера телефона и 2FA пароля
+• Пересылка SMS кодов в реальном времени
+
+<b>📋 Формат вывода</b>
+• Формат JSON (удобен для разработчиков)
+• Формат CSV (совместим с Excel)
+• Формат TXT (легко просматривать)
+
+<b>🌐 Прием кода верификации</b>
+• Независимая веб-ссылка для каждого аккаунта
+• Автообновление для отображения последнего кода
+• Защита с автоматическим истечением через 5 минут
+
+<b>📤 Инструкции</b>
+Пожалуйста, загрузите ZIP-файл, содержащий файлы TData или Session...""",
+        "my": """🔗 <b>API ဖော်မတ်ပြောင်းခြင်း</b>
+
+<b>📱 လုပ်ဆောင်ချက် ဖော်ပြချက်</b>
+• TData/Session ကို API ဖော်မတ်သို့ ပြောင်းခြင်း
+• အထူး အတည်ပြုကုဒ် လင့်ခ် ဖန်တီးခြင်း
+• ဖုန်းနံပါတ်နှင့် 2FA စကားဝှက်ကို အလိုအလျောက် ထုတ်ယူခြင်း
+• SMS အတည်ပြုကုဒ်များကို အချိန်နှင့်တပြေးညီ ပေးပို့ခြင်း
+
+<b>📋 ထွက်ရှိမည့်ဖော်မတ်</b>
+• JSON ဖော်မတ် (developer-friendly)
+• CSV ဖော်မတ် (Excel compatible)
+• TXT ဖော်မတ် (လွယ်ကူစွာကြည့်ရှုနိုင်)
+
+<b>🌐 အတည်ပြုကုဒ် လက်ခံခြင်း</b>
+• အကောင့်တစ်ခုစီအတွက် သီးခြား web link
+• နောက်ဆုံးကုဒ်ကို ပြသရန် အလိုအလျောက် refresh
+• 5 မိနစ် အလိုအလျောက် သက်တမ်းကုန်ဆုံးခြင်း ကာကွယ်မှု
+
+<b>📤 ညွှန်ကြားချက်များ</b>
+TData သို့မဟုတ် Session ဖိုင်များပါရှိသော ZIP ဖိုင်ကို တင်ပါ...""",
+        "bn": """🔗 <b>API ফরম্যাট রূপান্তর</b>
+
+<b>📱 বৈশিষ্ট্যের বিবরণ</b>
+• TData/Session কে API ফরম্যাটে রূপান্তর করুন
+• ডেডিকেটেড ভেরিফিকেশন কোড লিংক তৈরি করুন
+• ফোন নম্বর এবং 2FA পাসওয়ার্ড স্বয়ংক্রিয়ভাবে এক্সট্র্যাক্ট করুন
+• রিয়েল-টাইম SMS ভেরিফিকেশন ফরওয়ার্ডিং
+
+<b>📋 আউটপুট ফরম্যাট</b>
+• JSON ফরম্যাট (ডেভেলপার-বান্ধব)
+• CSV ফরম্যাট (Excel সামঞ্জস্যপূর্ণ)
+• TXT ফরম্যাট (দেখতে সহজ)
+
+<b>🌐 ভেরিফিকেশন কোড রিসেপশন</b>
+• প্রতিটি অ্যাকাউন্টের জন্য স্বতন্ত্র ওয়েব লিংক
+• সর্বশেষ কোড দেখাতে অটো-রিফ্রেশ
+• 5-মিনিট অটো-মেয়াদ শেষ সুরক্ষা
+
+<b>📤 নির্দেশাবলী</b>
+TData বা Session ফাইল সমন্বিত ZIP ফাইল আপলোড করুন...""",
+        "ar": """🔗 <b>تحويل تنسيق API</b>
+
+<b>📱 وصف الميزة</b>
+• تحويل TData/Session إلى تنسيق API
+• إنشاء رابط رمز التحقق المخصص
+• استخراج رقم الهاتف وكلمة مرور 2FA تلقائيًا
+• إعادة توجيه رمز التحقق عبر الرسائل القصيرة في الوقت الفعلي
+
+<b>📋 تنسيق الإخراج</b>
+• تنسيق JSON (سهل للمطورين)
+• تنسيق CSV (متوافق مع Excel)
+• تنسيق TXT (سهل العرض)
+
+<b>🌐 استقبال رمز التحقق</b>
+• رابط ويب مستقل لكل حساب
+• التحديث التلقائي لإظهار أحدث رمز
+• حماية انتهاء صلاحية تلقائية لمدة 5 دقائق
+
+<b>📤 التعليمات</b>
+يرجى تحميل ملف ZIP يحتوي على ملفات TData أو Session...""",
+        "vi": """🔗 <b>Chuyển đổi định dạng API</b>
+
+<b>📱 Mô tả tính năng</b>
+• Chuyển đổi TData/Session sang định dạng API
+• Tạo liên kết mã xác minh chuyên dụng
+• Tự động trích xuất số điện thoại và mật khẩu 2FA
+• Chuyển tiếp mã xác minh SMS theo thời gian thực
+
+<b>📋 Định dạng đầu ra</b>
+• Định dạng JSON (thân thiện với nhà phát triển)
+• Định dạng CSV (tương thích Excel)
+• Định dạng TXT (dễ xem)
+
+<b>🌐 Nhận mã xác minh</b>
+• Liên kết web độc lập cho mỗi tài khoản
+• Tự động làm mới để hiển thị mã mới nhất
+• Bảo vệ hết hạn tự động sau 5 phút
+
+<b>📤 Hướng dẫn</b>
+Vui lòng tải lên tệp ZIP chứa các tệp TData hoặc Session..."""
+    },
+    "back_to_main_menu": {
+        "zh-CN": "🔙 返回主菜单",
+        "en-US": "🔙 Back to Main Menu",
+        "ru": "🔙 Назад в главное меню",
+        "my": "🔙 ပင်မမီနူးသို့ ပြန်သွားရန်",
+        "bn": "🔙 প্রধান মেনুতে ফিরে যান",
+        "ar": "🔙 العودة إلى القائمة الرئيسية",
+        "vi": "🔙 Quay lại menu chính"
+    },
+    # Admin command usage messages
+    "addadmin_usage": {
+        "zh-CN": "📝 使用方法:\n/addadmin [用户ID或@用户名]\n\n示例:\n/addadmin 123456789\n/addadmin @username",
+        "en-US": "📝 Usage:\n/addadmin [UserID or @username]\n\nExample:\n/addadmin 123456789\n/addadmin @username",
+        "ru": "📝 Использование:\n/addadmin [ID пользователя или @имя]\n\nПример:\n/addadmin 123456789\n/addadmin @username",
+        "my": "📝 အသုံးပြုနည်း:\n/addadmin [UserID သို့မဟုတ် @အမည်]\n\nဥပမာ:\n/addadmin 123456789\n/addadmin @username",
+        "bn": "📝 ব্যবহার:\n/addadmin [UserID বা @username]\n\nউদাহরণ:\n/addadmin 123456789\n/addadmin @username",
+        "ar": "📝 الاستخدام:\n/addadmin [معرف المستخدم أو @اسم المستخدم]\n\nمثال:\n/addadmin 123456789\n/addadmin @username",
+        "vi": "📝 Cách sử dụng:\n/addadmin [UserID hoặc @username]\n\nVí dụ:\n/addadmin 123456789\n/addadmin @username"
+    },
+    "removeadmin_usage": {
+        "zh-CN": "📝 使用方法:\n/removeadmin [用户ID]\n\n示例:\n/removeadmin 123456789",
+        "en-US": "📝 Usage:\n/removeadmin [UserID]\n\nExample:\n/removeadmin 123456789",
+        "ru": "📝 Использование:\n/removeadmin [ID пользователя]\n\nПример:\n/removeadmin 123456789",
+        "my": "📝 အသုံးပြုနည်း:\n/removeadmin [UserID]\n\nဥပမာ:\n/removeadmin 123456789",
+        "bn": "📝 ব্যবহার:\n/removeadmin [UserID]\n\nউদাহরণ:\n/removeadmin 123456789",
+        "ar": "📝 الاستخدام:\n/removeadmin [معرف المستخدم]\n\nمثال:\n/removeadmin 123456789",
+        "vi": "📝 Cách sử dụng:\n/removeadmin [UserID]\n\nVí dụ:\n/removeadmin 123456789"
+    },
+    "admin_add_details": {
+        "zh-CN": "✅ 成功添加管理员\n\n👤 用户ID: {user_id}\n📝 用户名: @{username}\n🏷️ 昵称: {first_name}\n⏰ 添加时间: {time}",
+        "en-US": "✅ Successfully added admin\n\n👤 User ID: {user_id}\n📝 Username: @{username}\n🏷️ Nickname: {first_name}\n⏰ Added: {time}",
+        "ru": "✅ Администратор успешно добавлен\n\n👤 ID пользователя: {user_id}\n📝 Имя: @{username}\n🏷️ Никнейм: {first_name}\n⏰ Добавлен: {time}",
+        "my": "✅ စီမံခန့်ခွဲသူ အောင်မြင်စွာ ထည့်သွင်းပြီးပါပြီ\n\n👤 အသုံးပြုသူ ID: {user_id}\n📝 အမည်: @{username}\n🏷️ ဆိုင်းဘုတ်: {first_name}\n⏰ ထည့်သွင်းသည့်အချိန်: {time}",
+        "bn": "✅ সফলভাবে প্রশাসক যোগ করা হয়েছে\n\n👤 ব্যবহারকারী ID: {user_id}\n📝 ব্যবহারকারীর নাম: @{username}\n🏷️ ডাকনাম: {first_name}\n⏰ যোগ করা হয়েছে: {time}",
+        "ar": "✅ تمت إضافة المسؤول بنجاح\n\n👤 معرف المستخدم: {user_id}\n📝 اسم المستخدم: @{username}\n🏷️ اللقب: {first_name}\n⏰ تمت الإضافة: {time}",
+        "vi": "✅ Đã thêm quản trị viên thành công\n\n👤 ID người dùng: {user_id}\n📝 Tên người dùng: @{username}\n🏷️ Biệt danh: {first_name}\n⏰ Đã thêm: {time}"
+    },
+    "admin_list_title": {
+        "zh-CN": "<b>👑 管理员列表</b>\n\n",
+        "en-US": "<b>👑 Admin List</b>\n\n",
+        "ru": "<b>👑 Список администраторов</b>\n\n",
+        "my": "<b>👑 စီမံခန့်ခွဲသူ စာရင်း</b>\n\n",
+        "bn": "<b>👑 প্রশাসক তালিকা</b>\n\n",
+        "ar": "<b>👑 قائمة المسؤولين</b>\n\n",
+        "vi": "<b>👑 Danh sách quản trị viên</b>\n\n"
+    },
+    "admin_list_total": {
+        "zh-CN": "<b>📊 总计: {count} 个管理员</b>",
+        "en-US": "<b>📊 Total: {count} admins</b>",
+        "ru": "<b>📊 Всего: {count} администраторов</b>",
+        "my": "<b>📊 စုစုပေါင်း: {count} စီမံခန့်ခွဲသူ</b>",
+        "bn": "<b>📊 মোট: {count} প্রশাসক</b>",
+        "ar": "<b>📊 المجموع: {count} مسؤول</b>",
+        "vi": "<b>📊 Tổng: {count} quản trị viên</b>"
+    },
+    # Proxy command messages  
+    "proxy_panel_title": {
+        "zh-CN": "<b>📡 代理管理面板</b>",
+        "en-US": "<b>📡 Proxy Management Panel</b>",
+        "ru": "<b>📡 Панель управления прокси</b>",
+        "my": "<b>📡 Proxy စီမံခန့်ခွဲမှု ပြားပြား</b>",
+        "bn": "<b>📡 প্রক্সি ম্যানেজমেন্ট প্যানেল</b>",
+        "ar": "<b>📡 لوحة إدارة البروكسي</b>",
+        "vi": "<b>📡 Bảng điều khiển quản lý Proxy</b>"
+    },
+    "proxy_current_status_section": {
+        "zh-CN": "<b>📊 当前状态</b>",
+        "en-US": "<b>📊 Current Status</b>",
+        "ru": "<b>📊 Текущий статус</b>",
+        "my": "<b>📊 လက်ရှိအခြေအနေ</b>",
+        "bn": "<b>📊 বর্তমান অবস্থা</b>",
+        "ar": "<b>📊 الحالة الحالية</b>",
+        "vi": "<b>📊 Trạng thái hiện tại</b>"
+    },
+    "proxy_format_support_section": {
+        "zh-CN": "<b>📝 代理格式支持</b>",
+        "en-US": "<b>📝 Proxy Format Support</b>",
+        "ru": "<b>📝 Поддерживаемые форматы прокси</b>",
+        "my": "<b>📝 Proxy ဖော်မတ် ပံ့ပိုးမှု</b>",
+        "bn": "<b>📝 প্রক্সি ফরম্যাট সাপোর্ট</b>",
+        "ar": "<b>📝 دعم تنسيق البروكسي</b>",
+        "vi": "<b>📝 Hỗ trợ định dạng Proxy</b>"
+    },
+    "proxy_no_available": {
+        "zh-CN": "❌ 没有可用的代理",
+        "en-US": "❌ No proxies available",
+        "ru": "❌ Нет доступных прокси",
+        "my": "❌ အသုံးပြုနိုင်သော proxy များ မရှိပါ",
+        "bn": "❌ কোন প্রক্সি উপলব্ধ নেই",
+        "ar": "❌ لا توجد بروكسيات متاحة",
+        "vi": "❌ Không có proxy nào khả dụng"
+    },
+    "proxy_no_test": {
+        "zh-CN": "❌ 没有可用的代理进行测试",
+        "en-US": "❌ No proxies available for testing",
+        "ru": "❌ Нет доступных прокси для тестирования",
+        "my": "❌ စမ်းသပ်ရန်အတွက် အသုံးပြုနိုင်သော proxy များ မရှိပါ",
+        "bn": "❌ পরীক্ষার জন্য কোন প্রক্সি উপলব্ধ নেই",
+        "ar": "❌ لا توجد بروكسيات متاحة للاختبار",
+        "vi": "❌ Không có proxy nào để kiểm tra"
+    },
+    "proxy_no_cleanup": {
+        "zh-CN": "❌ 没有可用的代理进行清理",
+        "en-US": "❌ No proxies available for cleanup",
+        "ru": "❌ Нет доступных прокси для очистки",
+        "my": "❌ ရှင်းလင်းရန်အတွက် အသုံးပြုနိုင်သော proxy များ မရှိပါ",
+        "bn": "❌ পরিষ্কারের জন্য কোন প্রক্সি উপলব্ধ নেই",
+        "ar": "❌ لا توجد بروكسيات متاحة للتنظيف",
+        "vi": "❌ Không có proxy nào để dọn dẹp"
+    },
+    "proxy_testing_progress": {
+        "zh-CN": "🧪 <b>代理测试中...</b>\n\n📊 正在初始化测试环境...",
+        "en-US": "🧪 <b>Testing Proxies...</b>\n\n📊 Initializing test environment...",
+        "ru": "🧪 <b>Тестирование прокси...</b>\n\n📊 Инициализация тестовой среды...",
+        "my": "🧪 <b>Proxy များကို စမ်းသပ်နေသည်...</b>\n\n📊 စမ်းသပ်မှု ပတ်ဝန်းကျင်ကို စတင်နေသည်...",
+        "bn": "🧪 <b>প্রক্সি পরীক্ষা করা হচ্ছে...</b>\n\n📊 টেস্ট পরিবেশ শুরু করা হচ্ছে...",
+        "ar": "🧪 <b>اختبار البروكسيات...</b>\n\n📊 تهيئة بيئة الاختبار...",
+        "vi": "🧪 <b>Đang kiểm tra Proxy...</b>\n\n📊 Đang khởi tạo môi trường kiểm tra..."
+    },
+    "proxy_testing_in_progress": {
+        "zh-CN": "🧪 <b>代理测试进行中...</b>\n\n📊 已测试: {tested}/{total}\n✅ 可用: {working}\n❌ 失败: {failed}",
+        "en-US": "🧪 <b>Proxy Test In Progress...</b>\n\n📊 Tested: {tested}/{total}\n✅ Working: {working}\n❌ Failed: {failed}",
+        "ru": "🧪 <b>Тест прокси в процессе...</b>\n\n📊 Протестировано: {tested}/{total}\n✅ Работает: {working}\n❌ Не работает: {failed}",
+        "my": "🧪 <b>Proxy စမ်းသပ်မှု လုပ်ဆောင်နေသည်...</b>\n\n📊 စမ်းသပ်ပြီး: {tested}/{total}\n✅ အလုပ်လုပ်သည်: {working}\n❌ မအောင်မြင်ပါ: {failed}",
+        "bn": "🧪 <b>প্রক্সি পরীক্ষা চলছে...</b>\n\n📊 পরীক্ষিত: {tested}/{total}\n✅ কাজ করছে: {working}\n❌ ব্যর্থ: {failed}",
+        "ar": "🧪 <b>اختبار البروكسي قيد التقدم...</b>\n\n📊 تم الاختبار: {tested}/{total}\n✅ يعمل: {working}\n❌ فشل: {failed}",
+        "vi": "🧪 <b>Đang kiểm tra Proxy...</b>\n\n📊 Đã kiểm tra: {tested}/{total}\n✅ Hoạt động: {working}\n❌ Thất bại: {failed}"
+    },
+    "proxy_testing_complete": {
+        "zh-CN": "✅ <b>代理测试完成！</b>\n\n📊 总数: {total}\n✅ 可用: {working}\n❌ 失败: {failed}\n⏱️ 耗时: {duration}秒",
+        "en-US": "✅ <b>Proxy Test Complete!</b>\n\n📊 Total: {total}\n✅ Working: {working}\n❌ Failed: {failed}\n⏱️ Duration: {duration}s",
+        "ru": "✅ <b>Тест прокси завершен!</b>\n\n📊 Всего: {total}\n✅ Работает: {working}\n❌ Не работает: {failed}\n⏱️ Время: {duration}с",
+        "my": "✅ <b>Proxy စမ်းသပ်မှု ပြီးစီးပါပြီ!</b>\n\n📊 စုစုပေါင်း: {total}\n✅ အလုပ်လုပ်သည်: {working}\n❌ မအောင်မြင်ပါ: {failed}\n⏱️ ကြာချိန်: {duration}စက္ကန့်",
+        "bn": "✅ <b>প্রক্সি পরীক্ষা সম্পন্ন!</b>\n\n📊 মোট: {total}\n✅ কাজ করছে: {working}\n❌ ব্যর্থ: {failed}\n⏱️ সময়: {duration}সে",
+        "ar": "✅ <b>اكتمل اختبار البروكسي!</b>\n\n📊 المجموع: {total}\n✅ يعمل: {working}\n❌ فشل: {failed}\n⏱️ المدة: {duration}ث",
+        "vi": "✅ <b>Kiểm tra Proxy hoàn tất!</b>\n\n📊 Tổng: {total}\n✅ Hoạt động: {working}\n❌ Thất bại: {failed}\n⏱️ Thời gian: {duration}s"
+    },
+    "proxy_cleanup_confirm_title": {
+        "zh-CN": "⚠️ <b>代理清理确认</b>",
+        "en-US": "⚠️ <b>Proxy Cleanup Confirmation</b>",
+        "ru": "⚠️ <b>Подтверждение очистки прокси</b>",
+        "my": "⚠️ <b>Proxy ရှင်းလင်းမှု အတည်ပြုချက်</b>",
+        "bn": "⚠️ <b>প্রক্সি পরিষ্কারের নিশ্চিতকরণ</b>",
+        "ar": "⚠️ <b>تأكيد تنظيف البروكسي</b>",
+        "vi": "⚠️ <b>Xác nhận dọn dẹp Proxy</b>"
+    },
+    "proxy_detailed_status_title": {
+        "zh-CN": "<b>📡 代理详细状态</b>\n\n",
+        "en-US": "<b>📡 Detailed Proxy Status</b>\n\n",
+        "ru": "<b>📡 Подробный статус прокси</b>\n\n",
+        "my": "<b>📡 Proxy အသေးစိတ်အခြေအနေ</b>\n\n",
+        "bn": "<b>📡 বিস্তারিত প্রক্সি স্ট্যাটাস</b>\n\n",
+        "ar": "<b>📡 حالة البروكسي التفصيلية</b>\n\n",
+        "vi": "<b>📡 Trạng thái Proxy chi tiết</b>\n\n"
+    },
+    "proxy_more_proxies": {
+        "zh-CN": "\n... 还有 {count} 个代理",
+        "en-US": "\n... and {count} more proxies",
+        "ru": "\n... и еще {count} прокси",
+        "my": "\n... နောက်ထပ် {count} ခု ရှိသေးသည်",
+        "bn": "\n... এবং আরও {count} প্রক্সি",
+        "ar": "\n... و {count} بروكسي آخر",
+        "vi": "\n... và {count} proxy khác"
+    },
+    "proxy_switch_status_section": {
+        "zh-CN": "\n\n<b>📊 代理开关状态</b>\n",
+        "en-US": "\n\n<b>📊 Proxy Switch Status</b>\n",
+        "ru": "\n\n<b>📊 Статус переключателя прокси</b>\n",
+        "my": "\n\n<b>📊 Proxy ခလုတ်အခြေအနေ</b>\n",
+        "bn": "\n\n<b>📊 প্রক্সি সুইচ স্ট্যাটাস</b>\n",
+        "ar": "\n\n<b>📊 حالة مفتاح البروكسي</b>\n",
+        "vi": "\n\n<b>📊 Trạng thái chuyển đổi Proxy</b>\n"
+    },
+    "proxy_status_current": {
+        "zh-CN": "• 当前状态: {status}\n",
+        "en-US": "• Current Status: {status}\n",
+        "ru": "• Текущий статус: {status}\n",
+        "my": "• လက်ရှိအခြေအနေ: {status}\n",
+        "bn": "• বর্তমান অবস্থা: {status}\n",
+        "ar": "• الحالة الحالية: {status}\n",
+        "vi": "• Trạng thái hiện tại: {status}\n"
+    },
+    "proxy_status_update_time": {
+        "zh-CN": "• 更新时间: {time}\n",
+        "en-US": "• Updated: {time}\n",
+        "ru": "• Обновлено: {time}\n",
+        "my": "• ပြင်ဆင်သည့်အချိန်: {time}\n",
+        "bn": "• আপডেট করা হয়েছে: {time}\n",
+        "ar": "• تم التحديث: {time}\n",
+        "vi": "• Đã cập nhật: {time}\n"
+    },
+    "proxy_status_operator": {
+        "zh-CN": "• 操作人员: {user}\n",
+        "en-US": "• Operator: {user}\n",
+        "ru": "• Оператор: {user}\n",
+        "my": "• စစ်ဆေးသူ: {user}\n",
+        "bn": "• অপারেটর: {user}\n",
+        "ar": "• المشغل: {user}\n",
+        "vi": "• Người vận hành: {user}\n"
+    },
 }
 
 DEFAULT_LANG = "zh-CN"
@@ -892,8 +1465,8 @@ def normalize_lang(code: str) -> str:
     if code in LANGS:
         return code
     aliases = {
-        "zh": "zh-CN", "cn": "zh-CN", "ru-RU": "ru", "my-MM": "my",
-        "bn-BD": "bn", "ar-SA": "ar", "vi-VN": "vi", "en": "en-US", "us": "en-US"
+        "zh": "zh-CN", "cn": "zh-CN", "ru-RU": "ru", "my-MM": "my", "mm": "my",
+        "bn-BD": "bn", "ar-SA": "ar", "vi-VN": "vi", "en": "en-US", "us": "en-US", "en-us": "en-US"
     }
     return aliases.get(code, DEFAULT_LANG)
 
@@ -921,39 +1494,92 @@ def get_welcome_title(lang_code: str) -> str:
     return LANGS.get(lang, LANGS[DEFAULT_LANG])["welcome_title"]
 
 
-def get_text(tr: dict, default: str = "", **kwargs) -> str:
+def get_text(lang: str, *keys, default: str = "", **kwargs) -> str:
     """
-    Get translated text with fallback support and formatting.
+    Get translated text with hierarchical key support and fallback.
+    
+    Supports multiple calling patterns:
+    1. get_text(lang, "key_name")  - Direct TEXTS lookup
+    2. get_text(lang, "status", "title")  - Hierarchical LANGS lookup
+    3. get_text(lang, "status.title")  - Dot-notation path
     
     Args:
-        tr: Dictionary with translations for each language (keys are language codes)
+        lang: Language code (e.g., "zh-CN", "en-US", "ru")
+        *keys: One or more keys to navigate the translation dictionaries
         default: Default text if translation not found
         **kwargs: Format parameters for string formatting
     
     Returns:
         Translated and formatted string
     
-    Usage:
-        # In bot code, use bot.t(user_id, {...translations...})
-        text = get_text({"zh-CN": "你好 {name}", "en-US": "Hello {name}"}, name="World")
+    Examples:
+        get_text("en-US", "welcome_message")
+        get_text("ru", "status", "title")
+        get_text("zh-CN", "proxy", "enabled", count=5)
     """
-    # This function is designed to work with the bot.t() helper
-    # It receives pre-selected language text
-    if isinstance(tr, str):
-        text = tr
-    elif isinstance(tr, dict):
-        # If dict, return the default language or first available
-        text = tr.get(DEFAULT_LANG) or next(iter(tr.values()), default)
+    lang = normalize_lang(lang)
+    
+    if not keys:
+        return default
+    
+    # Handle single dot-notation key
+    if len(keys) == 1 and "." in str(keys[0]):
+        keys = tuple(str(keys[0]).split("."))
+    
+    # Try TEXTS dictionary first (flat structure)
+    if len(keys) == 1:
+        key = keys[0]
+        if key in TEXTS:
+            text_dict = TEXTS[key]
+            if isinstance(text_dict, dict):
+                text = text_dict.get(lang) or text_dict.get(DEFAULT_LANG) or default
+            else:
+                text = str(text_dict) if text_dict else default
+        else:
+            # Try LANGS as fallback
+            text = _get_from_langs(lang, keys, default)
     else:
-        text = default
+        # Multiple keys - navigate LANGS hierarchy
+        text = _get_from_langs(lang, keys, default)
     
     # Apply formatting if kwargs provided
     if kwargs and text:
         try:
             return text.format(**kwargs)
-        except (KeyError, ValueError):
+        except (KeyError, ValueError) as e:
+            # If formatting fails, return unformatted text
             return text
     return text or default
+
+
+def _get_from_langs(lang: str, keys: tuple, default: str = "") -> str:
+    """Helper function to navigate LANGS hierarchy"""
+    try:
+        # Try user's language first
+        data = LANGS[lang]
+        for key in keys:
+            if isinstance(data, dict):
+                data = data[key]
+            else:
+                raise KeyError
+        return str(data) if data else default
+    except (KeyError, TypeError):
+        # Fallback to default language
+        try:
+            data = LANGS[DEFAULT_LANG]
+            for key in keys:
+                if isinstance(data, dict):
+                    data = data[key]
+                else:
+                    raise KeyError
+            return str(data) if data else default
+        except (KeyError, TypeError):
+            # Return default if all else fails
+            return default
+
+
+# Alias for convenience
+tr = get_text
 
 
 def get_text_by_key(lang_code: str, category: str, key: str, **kwargs) -> str:
