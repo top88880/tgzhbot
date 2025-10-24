@@ -5952,39 +5952,51 @@ class EnhancedBot:
         # 检查权限
         is_member, level, _ = self.db.check_membership(user_id)
         if not is_member and not self.db.is_admin(user_id):
-            self.safe_send_message(update, "❌ 需要会员权限才能使用格式转换功能")
+            self.safe_send_message(update, self.t(user_id, TEXTS["need_membership"]))
             return
         
         if not OPENTELE_AVAILABLE:
-            self.safe_send_message(update, "❌ 格式转换功能不可用\n\n原因: opentele库未安装\n💡 请安装: pip install opentele")
+            error_msg = self.t(user_id, {
+                "zh-CN": "❌ 格式转换功能不可用\n\n原因: opentele库未安装\n💡 请安装: pip install opentele",
+                "en-US": "❌ Format conversion unavailable\n\nReason: opentele library not installed\n💡 Please install: pip install opentele",
+                "ru": "❌ Преобразование формата недоступно\n\nПричина: библиотека opentele не установлена\n💡 Пожалуйста, установите: pip install opentele",
+                "my": "❌ ဖော်မတ်ပြောင်းခြင်း မရနိုင်ပါ\n\nအကြောင်းရင်း: opentele library မထည့်သွင်းထားပါ\n💡 ထည့်သွင်းပါ: pip install opentele",
+                "bn": "❌ ফরম্যাট রূপান্তর উপলব্ধ নয়\n\nকারণ: opentele লাইব্রেরি ইনস্টল করা নেই\n💡 ইনস্টল করুন: pip install opentele",
+                "ar": "❌ تحويل التنسيق غير متاح\n\nالسبب: مكتبة opentele غير مثبتة\n💡 يرجى التثبيت: pip install opentele",
+                "vi": "❌ Chuyển đổi định dạng không khả dụng\n\nLý do: thư viện opentele chưa được cài đặt\n💡 Vui lòng cài đặt: pip install opentele"
+            })
+            self.safe_send_message(update, error_msg)
             return
         
-        text = """
-🔄 <b>格式转换功能</b>
+        title = self.t(user_id, TEXTS["convert_menu_title"])
+        select_prompt = self.t(user_id, TEXTS["convert_select_direction"])
+        
+        text = f"""
+{title}
 
-<b>📁 支持的转换</b>
+<b>📁 {self.t(user_id, {"zh-CN": "支持的转换", "en-US": "Supported Conversions", "ru": "Поддерживаемые преобразования", "my": "ပံ့ပိုးထားသော ပြောင်းလဲမှုများ", "bn": "সমর্থিত রূপান্তর", "ar": "التحويلات المدعومة", "vi": "Chuyển đổi được hỗ trợ"})}</b>
 1️⃣ <b>Tdata → Session</b>
-   • 将Telegram Desktop的tdata格式转换为Session格式
-   • 适用于需要使用Session的工具
+   • {self.t(user_id, {"zh-CN": "将Telegram Desktop的tdata格式转换为Session格式", "en-US": "Convert Telegram Desktop tdata format to Session format", "ru": "Преобразование формата tdata Telegram Desktop в формат Session", "my": "Telegram Desktop ၏ tdata ဖော်မတ်ကို Session ဖော်မတ်သို့ ပြောင်းပါ", "bn": "Telegram Desktop এর tdata ফরম্যাটকে Session ফরম্যাটে রূপান্তর করুন", "ar": "تحويل تنسيق tdata من Telegram Desktop إلى تنسيق Session", "vi": "Chuyển đổi định dạng tdata của Telegram Desktop sang định dạng Session"})}
 
 2️⃣ <b>Session → Tdata</b>
-   • 将Session格式转换为Telegram Desktop的tdata格式
-   • 适用于Telegram Desktop客户端
+   • {self.t(user_id, {"zh-CN": "将Session格式转换为Telegram Desktop的tdata格式", "en-US": "Convert Session format to Telegram Desktop tdata format", "ru": "Преобразование формата Session в формат tdata Telegram Desktop", "my": "Session ဖော်မတ်ကို Telegram Desktop ၏ tdata ဖော်မတ်သို့ ပြောင်းပါ", "bn": "Session ফরম্যাটকে Telegram Desktop এর tdata ফরম্যাটে রূপান্তর করুন", "ar": "تحويل تنسيق Session إلى تنسيق tdata من Telegram Desktop", "vi": "Chuyển đổi định dạng Session sang định dạng tdata của Telegram Desktop"})}
 
-<b>⚡ 功能特点</b>
-• 批量并发转换，提高效率
-• 实时进度显示
-• 自动分类成功和失败
-• 完善的错误处理
+<b>⚡ {self.t(user_id, {"zh-CN": "功能特点", "en-US": "Features", "ru": "Особенности", "my": "အင်္ဂါရပ်များ", "bn": "বৈশিষ্ট্য", "ar": "الميزات", "vi": "Tính năng"})}</b>
+• {self.t(user_id, {"zh-CN": "批量并发转换，提高效率", "en-US": "Batch concurrent conversion for efficiency", "ru": "Пакетное параллельное преобразование для эффективности", "my": "စွမ်းဆောင်ရည်မြှင့်တင်ရန် အစု စုပေါင်းပြောင်းလဲမှု", "bn": "দক্ষতার জন্য ব্যাচ সমান্তরাল রূপান্তর", "ar": "تحويل دفعة متزامن للكفاءة", "vi": "Chuyển đổi đồng thời hàng loạt để nâng cao hiệu quả"})}
+• {self.t(user_id, {"zh-CN": "实时进度显示", "en-US": "Real-time progress display", "ru": "Отображение прогресса в реальном времени", "my": "အချိန်နှင့်တပြေးညီ တိုးတက်မှု ပြသခြင်း", "bn": "রিয়েল-টাইম অগ্রগতি প্রদর্শন", "ar": "عرض التقدم في الوقت الفعلي", "vi": "Hiển thị tiến trình theo thời gian thực"})}
 
-<b>📤 操作说明</b>
-请选择要执行的转换类型：
+<b>📤 {self.t(user_id, {"zh-CN": "操作说明", "en-US": "Instructions", "ru": "Инструкции", "my": "လမ်းညွှန်ချက်များ", "bn": "নির্দেশাবলী", "ar": "التعليمات", "vi": "Hướng dẫn"})}</b>
+{select_prompt}
         """
         
+        tdata_to_session_text = self.t(user_id, TEXTS["convert_tdata_to_session"])
+        session_to_tdata_text = self.t(user_id, TEXTS["convert_session_to_tdata"])
+        back_text = get_menu_labels(self.db.get_user_lang(user_id))["back_main"]
+        
         buttons = [
-            [InlineKeyboardButton("📤 Tdata → Session", callback_data="convert_tdata_to_session")],
-            [InlineKeyboardButton("📥 Session → Tdata", callback_data="convert_session_to_tdata")],
-            [InlineKeyboardButton("🔙 返回主菜单", callback_data="back_to_main")]
+            [InlineKeyboardButton(tdata_to_session_text, callback_data="convert_tdata_to_session")],
+            [InlineKeyboardButton(session_to_tdata_text, callback_data="convert_session_to_tdata")],
+            [InlineKeyboardButton(back_text, callback_data="back_to_main")]
         ]
         
         keyboard = InlineKeyboardMarkup(buttons)
@@ -5995,24 +6007,24 @@ class EnhancedBot:
         user_id = query.from_user.id
         
         if not self.db.is_admin(user_id):
-            query.answer("❌ 仅管理员可以操作")
+            query.answer(self.t(user_id, TEXTS["proxy_panel_admin_only"]))
             return
         
         if data == "proxy_enable":
             # 启用代理
             if self.db.set_proxy_enabled(True, user_id):
-                query.answer("✅ 代理已启用")
+                query.answer(self.t(user_id, TEXTS["proxy_enabled_success"]))
                 self.refresh_proxy_panel(query)
             else:
-                query.answer("❌ 启用失败")
+                query.answer(self.t(user_id, TEXTS.get("proxy_enable_failed", TEXTS["language_change_failed"])))
         
         elif data == "proxy_disable":
             # 禁用代理
             if self.db.set_proxy_enabled(False, user_id):
-                query.answer("✅ 代理已禁用")
+                query.answer(self.t(user_id, TEXTS["proxy_disabled_success"]))
                 self.refresh_proxy_panel(query)
             else:
-                query.answer("❌ 禁用失败")
+                query.answer(self.t(user_id, TEXTS.get("proxy_disable_failed", TEXTS["language_change_failed"])))
         
         elif data == "proxy_reload":
             # 重新加载代理列表
@@ -6020,7 +6032,7 @@ class EnhancedBot:
             self.proxy_manager.load_proxies()
             new_count = len(self.proxy_manager.proxies)
             
-            query.answer(f"✅ 重新加载完成: {old_count}→{new_count}个代理")
+            query.answer(self.t(user_id, TEXTS["proxy_reload_success"], count=new_count))
             self.refresh_proxy_panel(query)
         
         elif data == "proxy_status":

@@ -643,13 +643,13 @@ TEXTS = {
     },
     # Help and status messages
     "help_text": {
-        "zh-CN": get_text_by_key("zh-CN", "help", "title"),
-        "en-US": get_text_by_key("en-US", "help", "title"),
-        "ru": get_text_by_key("ru", "help", "title"),
-        "my": get_text_by_key("my", "help", "title"),
-        "bn": get_text_by_key("bn", "help", "title"),
-        "ar": get_text_by_key("ar", "help", "title"),
-        "vi": get_text_by_key("vi", "help", "title")
+        "zh-CN": "📖 详细说明",
+        "en-US": "📖 Detailed Description",
+        "ru": "📖 Подробное описание",
+        "my": "📖 အသေးစိတ်ဖော်ပြချက်",
+        "bn": "📖 বিস্তারিত বিবরণ",
+        "ar": "📖 وصف تفصيلي",
+        "vi": "📖 Mô tả chi tiết"
     },
     # Convert messages
     "convert_menu_title": {
@@ -742,6 +742,144 @@ TEXTS = {
         "bn": "✅ <b>পরীক্ষা সম্পন্ন</b>\n\n📊 মোট: {total}\n✅ স্বাভাবিক: {normal}\n❌ অস্বাভাবিক: {abnormal}\n⏱️ মোট সময়: {duration}সে",
         "ar": "✅ <b>اكتمل الفحص</b>\n\n📊 المجموع: {total}\n✅ طبيعي: {normal}\n❌ غير طبيعي: {abnormal}\n⏱️ الوقت الإجمالي: {duration}ث",
         "vi": "✅ <b>Kiểm tra hoàn tất</b>\n\n📊 Tổng: {total}\n✅ Bình thường: {normal}\n❌ Bất thường: {abnormal}\n⏱️ Tổng thời gian: {duration}s"
+    },
+    # Admin panel messages
+    "admin_panel_title": {
+        "zh-CN": "👑 <b>管理员面板</b>",
+        "en-US": "👑 <b>Admin Panel</b>",
+        "ru": "👑 <b>Панель администратора</b>",
+        "my": "👑 <b>စီမံခန့်ခွဲမှု ပြားပြား</b>",
+        "bn": "👑 <b>প্রশাসক প্যানেল</b>",
+        "ar": "👑 <b>لوحة الإدارة</b>",
+        "vi": "👑 <b>Bảng quản trị</b>"
+    },
+    "admin_only_access": {
+        "zh-CN": "❌ 仅管理员可访问",
+        "en-US": "❌ Admin access only",
+        "ru": "❌ Доступ только для администраторов",
+        "my": "❌ စီမံခန့်ခွဲသူများသာ ဝင်ရောက်နိုင်သည်",
+        "bn": "❌ শুধুমাত্র প্রশাসক অ্যাক্সেস",
+        "ar": "❌ الوصول للمسؤولين فقط",
+        "vi": "❌ Chỉ quản trị viên mới truy cập được"
+    },
+    # VIP messages
+    "vip_menu_title": {
+        "zh-CN": "💳 <b>会员中心</b>",
+        "en-US": "💳 <b>Membership Center</b>",
+        "ru": "💳 <b>Центр подписки</b>",
+        "my": "💳 <b>အဖွဲ့ဝင်အချက်အလက် စင်တာ</b>",
+        "bn": "💳 <b>সদস্যপদ কেন্দ্র</b>",
+        "ar": "💳 <b>مركز العضوية</b>",
+        "vi": "💳 <b>Trung tâm thành viên</b>"
+    },
+    # API conversion messages
+    "api_conversion_title": {
+        "zh-CN": "🔗 <b>API格式转换</b>",
+        "en-US": "🔗 <b>API Format Conversion</b>",
+        "ru": "🔗 <b>API-конвертация</b>",
+        "my": "🔗 <b>API ဖော်မတ်ပြောင်းခြင်း</b>",
+        "bn": "🔗 <b>API ফরম্যাট রূপান্তর</b>",
+        "ar": "🔗 <b>تحويل تنسيق API</b>",
+        "vi": "🔗 <b>Chuyển đổi định dạng API</b>"
+    },
+    # Broadcast messages
+    "broadcast_title": {
+        "zh-CN": "📢 <b>群发消息</b>",
+        "en-US": "📢 <b>Broadcast Message</b>",
+        "ru": "📢 <b>Массовая рассылка</b>",
+        "my": "📢 <b>အစုလိုက် မက်ဆေ့ချ်</b>",
+        "bn": "📢 <b>ব্রডকাস্ট বার্তা</b>",
+        "ar": "📢 <b>رسالة جماعية</b>",
+        "vi": "📢 <b>Tin nhắn quảng bá</b>"
+    },
+    # Classify messages
+    "classify_title": {
+        "zh-CN": "📦 <b>账号分类</b>",
+        "en-US": "📦 <b>Account Classification</b>",
+        "ru": "📦 <b>Классификация аккаунтов</b>",
+        "my": "📦 <b>အကောင့်ခွဲခြားခြင်း</b>",
+        "bn": "📦 <b>অ্যাকাউন্ট শ্রেণীবিভাগ</b>",
+        "ar": "📦 <b>تصنيف الحسابات</b>",
+        "vi": "📦 <b>Phân loại tài khoản</b>"
+    },
+    # Rename messages
+    "rename_title": {
+        "zh-CN": "📝 <b>文件重命名</b>",
+        "en-US": "📝 <b>File Rename</b>",
+        "ru": "📝 <b>Переименование файлов</b>",
+        "my": "📝 <b>ဖိုင်အမည်ပြောင်းခြင်း</b>",
+        "bn": "📝 <b>ফাইল পুনঃনামকরণ</b>",
+        "ar": "📝 <b>إعادة تسمية الملف</b>",
+        "vi": "📝 <b>Đổi tên tệp</b>"
+    },
+    # Merge messages
+    "merge_title": {
+        "zh-CN": "🧩 <b>账户合并</b>",
+        "en-US": "🧩 <b>Account Merge</b>",
+        "ru": "🧩 <b>Объединение аккаунтов</b>",
+        "my": "🧩 <b>အကောင့်ပေါင်းခြင်း</b>",
+        "bn": "🧩 <b>অ্যাকাউন্ট একত্রিত করুন</b>",
+        "ar": "🧩 <b>دمج الحسابات</b>",
+        "vi": "🧩 <b>Hợp nhất tài khoản</b>"
+    },
+    # 2FA messages
+    "twofa_title": {
+        "zh-CN": "🔐 <b>修改2FA</b>",
+        "en-US": "🔐 <b>Change 2FA</b>",
+        "ru": "🔐 <b>Изменить 2FA</b>",
+        "my": "🔐 <b>2FA ပြောင်းခြင်း</b>",
+        "bn": "🔐 <b>2FA পরিবর্তন করুন</b>",
+        "ar": "🔐 <b>تغيير 2FA</b>",
+        "vi": "🔐 <b>Thay đổi 2FA</b>"
+    },
+    # Anti-recovery messages
+    "antirecover_title": {
+        "zh-CN": "🛡️ <b>防止找回</b>",
+        "en-US": "🛡️ <b>Anti-recovery</b>",
+        "ru": "🛡️ <b>Защита от восстановления</b>",
+        "my": "🛡️ <b>ပြန်လည်ရယူခြင်းကာကွယ်</b>",
+        "bn": "🛡️ <b>পুনরুদ্ধার প্রতিরোধ</b>",
+        "ar": "🛡️ <b>منع الاسترداد</b>",
+        "vi": "🛡️ <b>Chống khôi phục</b>"
+    },
+    # File upload prompts
+    "upload_file_prompt": {
+        "zh-CN": "📤 请上传文件...",
+        "en-US": "📤 Please upload file...",
+        "ru": "📤 Пожалуйста, загрузите файл...",
+        "my": "📤 ဖိုင်ကို တင်ပါ...",
+        "bn": "📤 ফাইল আপলোড করুন...",
+        "ar": "📤 يرجى تحميل الملف...",
+        "vi": "📤 Vui lòng tải lên tệp..."
+    },
+    # Processing messages
+    "processing_wait": {
+        "zh-CN": "🔄 处理中，请稍候...",
+        "en-US": "🔄 Processing, please wait...",
+        "ru": "🔄 Обработка, пожалуйста, подождите...",
+        "my": "🔄 လုပ်ဆောင်နေသည်၊ ခဏစောင့်ပါ...",
+        "bn": "🔄 প্রক্রিয়াকরণ, অনুগ্রহ করে অপেক্ষা করুন...",
+        "ar": "🔄 المعالجة، يرجى الانتظار...",
+        "vi": "🔄 Đang xử lý, vui lòng đợi..."
+    },
+    # File operations
+    "file_received": {
+        "zh-CN": "✅ 文件已接收",
+        "en-US": "✅ File received",
+        "ru": "✅ Файл получен",
+        "my": "✅ ဖိုင်ရရှိပြီးပါပြီ",
+        "bn": "✅ ফাইল গৃহীত হয়েছে",
+        "ar": "✅ تم استلام الملف",
+        "vi": "✅ Đã nhận tệp"
+    },
+    "file_processing": {
+        "zh-CN": "🔄 正在处理文件...",
+        "en-US": "🔄 Processing file...",
+        "ru": "🔄 Обработка файла...",
+        "my": "🔄 ဖိုင်ကို လုပ်ဆောင်နေသည်...",
+        "bn": "🔄 ফাইল প্রক্রিয়াকরণ করা হচ্ছে...",
+        "ar": "🔄 معالجة الملف...",
+        "vi": "🔄 Đang xử lý tệp..."
     },
 }
 
