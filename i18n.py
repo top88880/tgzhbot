@@ -1535,6 +1535,296 @@ Vui lòng tải lên tệp ZIP chứa các tệp TData hoặc Session..."""
         "ar": "• المشغل: {user}\n",
         "vi": "• Người vận hành: {user}\n"
     },
+    # Help text keys
+    "help_main_features": {
+        "zh-CN": "主要功能",
+        "en-US": "Main Features",
+        "ru": "Основные функции",
+        "my": "အဓိကအင်္ဂါရပ်များ",
+        "bn": "প্রধান বৈশিষ্ট্য",
+        "ar": "الميزات الرئيسية",
+        "vi": "Tính năng chính"
+    },
+    "help_proxy_auto_detect": {
+        "zh-CN": "代理连接模式自动检测账号状态",
+        "en-US": "Proxy connection mode auto-detects account status",
+        "ru": "Режим прокси-соединения автоматически определяет статус аккаунта",
+        "my": "Proxy ချိတ်ဆက်မှုမုဒ်သည် အကောင့်အခြေအနေကို အလိုအလျောက် စစ်ဆေးသည်",
+        "bn": "প্রক্সি সংযোগ মোড স্বয়ংক্রিয়ভাবে অ্যাকাউন্ট স্থিতি সনাক্ত করে",
+        "ar": "وضع اتصال البروكسي يكتشف حالة الحساب تلقائيًا",
+        "vi": "Chế độ kết nối proxy tự động phát hiện trạng thái tài khoản"
+    },
+    "help_realtime_progress": {
+        "zh-CN": "实时进度显示和自动文件发送",
+        "en-US": "Real-time progress display and automatic file sending",
+        "ru": "Отображение прогресса в реальном времени и автоматическая отправка файлов",
+        "my": "အချိန်နှင့်တပြေးညီ တိုးတက်မှုပြသခြင်းနှင့် အလိုအလျောက် ဖိုင်ပေးပို့ခြင်း",
+        "bn": "রিয়েল-টাইম অগ্রগতি প্রদর্শন এবং স্বয়ংক্রিয় ফাইল পাঠানো",
+        "ar": "عرض التقدم في الوقت الفعلي وإرسال الملفات تلقائيًا",
+        "vi": "Hiển thị tiến trình theo thời gian thực và gửi tệp tự động"
+    },
+    "help_session_tdata_support": {
+        "zh-CN": "支持Session和TData格式",
+        "en-US": "Supports Session and TData formats",
+        "ru": "Поддержка форматов Session и TData",
+        "my": "Session နှင့် TData ဖော်မတ်များကို ပံ့ပိုးသည်",
+        "bn": "Session এবং TData ফরম্যাট সমর্থন করে",
+        "ar": "يدعم تنسيقات Session و TData",
+        "vi": "Hỗ trợ định dạng Session và TData"
+    },
+    "help_supported_formats": {
+        "zh-CN": "支持格式",
+        "en-US": "Supported Formats",
+        "ru": "Поддерживаемые форматы",
+        "my": "ပံ့ပိုးထားသော ဖော်မတ်များ",
+        "bn": "সমর্থিত ফরম্যাট",
+        "ar": "التنسيقات المدعومة",
+        "vi": "Định dạng được hỗ trợ"
+    },
+    "help_files": {
+        "zh-CN": "文件",
+        "en-US": "files",
+        "ru": "файлы",
+        "my": "ဖိုင်များ",
+        "bn": "ফাইল",
+        "ar": "ملفات",
+        "vi": "tệp"
+    },
+    "help_folders": {
+        "zh-CN": "文件夹",
+        "en-US": "folders",
+        "ru": "папки",
+        "my": "ဖိုင်တွဲများ",
+        "bn": "ফোল্ডার",
+        "ar": "مجلدات",
+        "vi": "thư mục"
+    },
+    "help_archives": {
+        "zh-CN": "压缩包",
+        "en-US": "archives",
+        "ru": "архивы",
+        "my": "ဖိုင်များ",
+        "bn": "সংরক্ষণাগার",
+        "ar": "أرشيف",
+        "vi": "tệp nén"
+    },
+    "help_format_conversion": {
+        "zh-CN": "格式转换",
+        "en-US": "Format Conversion",
+        "ru": "Преобразование формата",
+        "my": "ဖော်မတ်ပြောင်းခြင်း",
+        "bn": "ফরম্যাট রূপান্তর",
+        "ar": "تحويل التنسيق",
+        "vi": "Chuyển đổi định dạng"
+    },
+    "help_batch_processing": {
+        "zh-CN": "批量并发处理",
+        "en-US": "Batch concurrent processing",
+        "ru": "Пакетная параллельная обработка",
+        "my": "အစုလိုက် တစ်ပြိုင်နက် စီမံဆောင်ရွက်ခြင်း",
+        "bn": "ব্যাচ সমান্তরাল প্রক্রিয়াকরণ",
+        "ar": "معالجة دفعة متزامنة",
+        "vi": "Xử lý đồng thời hàng loạt"
+    },
+    "help_proxy_features": {
+        "zh-CN": "代理功能",
+        "en-US": "Proxy Features",
+        "ru": "Функции прокси",
+        "my": "Proxy လုပ်ဆောင်ချက်များ",
+        "bn": "প্রক্সি বৈশিষ্ট্য",
+        "ar": "ميزات البروكسي",
+        "vi": "Tính năng Proxy"
+    },
+    "help_auto_read_proxy": {
+        "zh-CN": "自动读取proxy.txt文件",
+        "en-US": "Auto-read proxy.txt file",
+        "ru": "Автоматическое чтение файла proxy.txt",
+        "my": "proxy.txt ဖိုင်ကို အလိုအလျောက် ဖတ်ခြင်း",
+        "bn": "স্বয়ংক্রিয়ভাবে proxy.txt ফাইল পড়ুন",
+        "ar": "قراءة ملف proxy.txt تلقائيًا",
+        "vi": "Tự động đọc tệp proxy.txt"
+    },
+    "help_proxy_types": {
+        "zh-CN": "支持HTTP/SOCKS4/SOCKS5代理",
+        "en-US": "Supports HTTP/SOCKS4/SOCKS5 proxies",
+        "ru": "Поддержка прокси HTTP/SOCKS4/SOCKS5",
+        "my": "HTTP/SOCKS4/SOCKS5 proxy များကို ပံ့ပိုးသည်",
+        "bn": "HTTP/SOCKS4/SOCKS5 প্রক্সি সমর্থন করে",
+        "ar": "يدعم بروكسيات HTTP/SOCKS4/SOCKS5",
+        "vi": "Hỗ trợ proxy HTTP/SOCKS4/SOCKS5"
+    },
+    "help_admin_commands": {
+        "zh-CN": "管理员命令",
+        "en-US": "Admin Commands",
+        "ru": "Команды администратора",
+        "my": "စီမံခန့်ခွဲသူ အမိန့်များ",
+        "bn": "প্রশাসক কমান্ড",
+        "ar": "أوامر المسؤول",
+        "vi": "Lệnh quản trị"
+    },
+    "help_speed_optimization": {
+        "zh-CN": "速度优化功能",
+        "en-US": "Speed Optimization",
+        "ru": "Оптимизация скорости",
+        "my": "အမြန်နှုန်းမြှင့်တင်ခြင်း",
+        "bn": "গতি অপ্টিমাইজেশন",
+        "ar": "تحسين السرعة",
+        "vi": "Tối ưu hóa tốc độ"
+    },
+    "help_username": {
+        "zh-CN": "用户名",
+        "en-US": "username",
+        "ru": "имя пользователя",
+        "my": "အသုံးပြုသူအမည်",
+        "bn": "ব্যবহারকারীর নাম",
+        "ar": "اسم المستخدم",
+        "vi": "tên người dùng"
+    },
+    "help_add_admin": {
+        "zh-CN": "添加管理员",
+        "en-US": "Add admin",
+        "ru": "Добавить администратора",
+        "my": "စီမံခန့်ခွဲသူထည့်ရန်",
+        "bn": "প্রশাসক যোগ করুন",
+        "ar": "إضافة مسؤول",
+        "vi": "Thêm quản trị viên"
+    },
+    "help_remove_admin": {
+        "zh-CN": "移除管理员",
+        "en-US": "Remove admin",
+        "ru": "Удалить администратора",
+        "my": "စီမံခန့်ခွဲသူဖယ်ရှားရန်",
+        "bn": "প্রশাসক সরান",
+        "ar": "إزالة المسؤول",
+        "vi": "Xóa quản trị viên"
+    },
+    "help_list_admins": {
+        "zh-CN": "查看管理员列表",
+        "en-US": "List admins",
+        "ru": "Список администраторов",
+        "my": "စီမံခန့်ခွဲသူများစာရင်း",
+        "bn": "প্রশাসক তালিকা",
+        "ar": "قائمة المسؤولين",
+        "vi": "Danh sách quản trị viên"
+    },
+    "help_proxy_status": {
+        "zh-CN": "代理状态管理",
+        "en-US": "Proxy status",
+        "ru": "Статус прокси",
+        "my": "Proxy အခြေအနေ",
+        "bn": "প্রক্সি স্থিতি",
+        "ar": "حالة البروكسي",
+        "vi": "Trạng thái proxy"
+    },
+    "help_test_proxy": {
+        "zh-CN": "测试代理",
+        "en-US": "Test proxies",
+        "ru": "Тест прокси",
+        "my": "Proxy စမ်းသပ်ရန်",
+        "bn": "প্রক্সি পরীক্ষা",
+        "ar": "اختبار البروكسي",
+        "vi": "Kiểm tra proxy"
+    },
+    "help_clean_proxy": {
+        "zh-CN": "清理失效代理",
+        "en-US": "Clean invalid proxies",
+        "ru": "Очистить неработающие прокси",
+        "my": "မမှန်ကန်သော proxy များကို ရှင်းလင်းရန်",
+        "bn": "অবৈধ প্রক্সি পরিষ্কার করুন",
+        "ar": "تنظيف البروكسيات غير الصالحة",
+        "vi": "Dọn proxy không hợp lệ"
+    },
+    "help_fast_mode": {
+        "zh-CN": "快速模式",
+        "en-US": "Fast mode",
+        "ru": "Быстрый режим",
+        "my": "အမြန်မုဒ်",
+        "bn": "দ্রুত মোড",
+        "ar": "الوضع السريع",
+        "vi": "Chế độ nhanh"
+    },
+    "help_concurrent_checks": {
+        "zh-CN": "并发检测",
+        "en-US": "Concurrent checks",
+        "ru": "Параллельные проверки",
+        "my": "တစ်ပြိုင်နက် စစ်ဆေးမှုများ",
+        "bn": "সমান্তরাল পরীক্ষা",
+        "ar": "الفحوصات المتزامنة",
+        "vi": "Kiểm tra đồng thời"
+    },
+    "help_smart_retry": {
+        "zh-CN": "智能重试",
+        "en-US": "Smart retry",
+        "ru": "Умная повторная попытка",
+        "my": "အသိဉာဏ်ရှိသော ပြန်လုပ်ခြင်း",
+        "bn": "স্মার্ট পুনঃচেষ্টা",
+        "ar": "إعادة محاولة ذكية",
+        "vi": "Thử lại thông minh"
+    },
+    # Convert flow keys
+    "convert_supported_conversions": {
+        "zh-CN": "支持的转换",
+        "en-US": "Supported Conversions",
+        "ru": "Поддерживаемые преобразования",
+        "my": "ပံ့ပိုးထားသော ပြောင်းလဲမှုများ",
+        "bn": "সমর্থিত রূপান্তর",
+        "ar": "التحويلات المدعومة",
+        "vi": "Chuyển đổi được hỗ trợ"
+    },
+    "convert_tdata_to_session_desc": {
+        "zh-CN": "将Telegram Desktop的tdata格式转换为Session格式",
+        "en-US": "Convert Telegram Desktop tdata format to Session format",
+        "ru": "Преобразование формата tdata Telegram Desktop в формат Session",
+        "my": "Telegram Desktop ၏ tdata ဖော်မတ်ကို Session ဖော်မတ်သို့ ပြောင်းပါ",
+        "bn": "Telegram Desktop এর tdata ফরম্যাটকে Session ফরম্যাটে রূপান্তর করুন",
+        "ar": "تحويل تنسيق tdata من Telegram Desktop إلى تنسيق Session",
+        "vi": "Chuyển đổi định dạng tdata của Telegram Desktop sang định dạng Session"
+    },
+    "convert_session_to_tdata_desc": {
+        "zh-CN": "将Session格式转换为Telegram Desktop的tdata格式",
+        "en-US": "Convert Session format to Telegram Desktop tdata format",
+        "ru": "Преобразование формата Session в формат tdata Telegram Desktop",
+        "my": "Session ဖော်မတ်ကို Telegram Desktop ၏ tdata ဖော်မတ်သို့ ပြောင်းပါ",
+        "bn": "Session ফরম্যাটকে Telegram Desktop এর tdata ফরম্যাটে রূপান্তর করুন",
+        "ar": "تحويل تنسيق Session إلى تنسيق tdata من Telegram Desktop",
+        "vi": "Chuyển đổi định dạng Session sang định dạng tdata của Telegram Desktop"
+    },
+    "convert_features": {
+        "zh-CN": "功能特点",
+        "en-US": "Features",
+        "ru": "Особенности",
+        "my": "အင်္ဂါရပ်များ",
+        "bn": "বৈশিষ্ট্য",
+        "ar": "الميزات",
+        "vi": "Tính năng"
+    },
+    "convert_batch_concurrent": {
+        "zh-CN": "批量并发转换，提高效率",
+        "en-US": "Batch concurrent conversion for efficiency",
+        "ru": "Пакетное параллельное преобразование для эффективности",
+        "my": "စွမ်းဆောင်ရည်မြှင့်တင်ရန် အစုလိုက်ပြောင်းလဲမှု",
+        "bn": "দক্ষতার জন্য ব্যাচ সমান্তরাল রূপান্তর",
+        "ar": "تحويل دفعة متزامن للكفاءة",
+        "vi": "Chuyển đổi đồng thời hàng loạt để nâng cao hiệu quả"
+    },
+    "convert_realtime_progress": {
+        "zh-CN": "实时进度显示",
+        "en-US": "Real-time progress display",
+        "ru": "Отображение прогресса в реальном времени",
+        "my": "အချိန်နှင့်တပြေးညီ တိုးတက်မှု ပြသခြင်း",
+        "bn": "রিয়েল-টাইম অগ্রগতি প্রদর্শন",
+        "ar": "عرض التقدم في الوقت الفعلي",
+        "vi": "Hiển thị tiến trình theo thời gian thực"
+    },
+    "convert_operation_guide": {
+        "zh-CN": "操作说明",
+        "en-US": "Operation Guide",
+        "ru": "Руководство по эксплуатации",
+        "my": "လုပ်ဆောင်ချက် လမ်းညွှန်",
+        "bn": "অপারেশন গাইড",
+        "ar": "دليل التشغيل",
+        "vi": "Hướng dẫn vận hành"
+    },
 }
 
 DEFAULT_LANG = "zh-CN"
