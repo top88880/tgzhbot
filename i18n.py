@@ -1761,6 +1761,70 @@ Vui lòng tải lên tệp ZIP chứa các tệp TData hoặc Session..."""
         "ar": "إعادة محاولة ذكية",
         "vi": "Thử lại thông minh"
     },
+    # Convert flow keys
+    "convert_supported_conversions": {
+        "zh-CN": "支持的转换",
+        "en-US": "Supported Conversions",
+        "ru": "Поддерживаемые преобразования",
+        "my": "ပံ့ပိုးထားသော ပြောင်းလဲမှုများ",
+        "bn": "সমর্থিত রূপান্তর",
+        "ar": "التحويلات المدعومة",
+        "vi": "Chuyển đổi được hỗ trợ"
+    },
+    "convert_tdata_to_session_desc": {
+        "zh-CN": "将Telegram Desktop的tdata格式转换为Session格式",
+        "en-US": "Convert Telegram Desktop tdata format to Session format",
+        "ru": "Преобразование формата tdata Telegram Desktop в формат Session",
+        "my": "Telegram Desktop ၏ tdata ဖော်မတ်ကို Session ဖော်မတ်သို့ ပြောင်းပါ",
+        "bn": "Telegram Desktop এর tdata ফরম্যাটকে Session ফরম্যাটে রূপান্তর করুন",
+        "ar": "تحويل تنسيق tdata من Telegram Desktop إلى تنسيق Session",
+        "vi": "Chuyển đổi định dạng tdata của Telegram Desktop sang định dạng Session"
+    },
+    "convert_session_to_tdata_desc": {
+        "zh-CN": "将Session格式转换为Telegram Desktop的tdata格式",
+        "en-US": "Convert Session format to Telegram Desktop tdata format",
+        "ru": "Преобразование формата Session в формат tdata Telegram Desktop",
+        "my": "Session ဖော်မတ်ကို Telegram Desktop ၏ tdata ဖော်မတ်သို့ ပြောင်းပါ",
+        "bn": "Session ফরম্যাটকে Telegram Desktop এর tdata ফরম্যাটে রূপান্তর করুন",
+        "ar": "تحويل تنسيق Session إلى تنسيق tdata من Telegram Desktop",
+        "vi": "Chuyển đổi định dạng Session sang định dạng tdata của Telegram Desktop"
+    },
+    "convert_features": {
+        "zh-CN": "功能特点",
+        "en-US": "Features",
+        "ru": "Особенности",
+        "my": "အင်္ဂါရပ်များ",
+        "bn": "বৈশিষ্ট্য",
+        "ar": "الميزات",
+        "vi": "Tính năng"
+    },
+    "convert_batch_concurrent": {
+        "zh-CN": "批量并发转换，提高效率",
+        "en-US": "Batch concurrent conversion for efficiency",
+        "ru": "Пакетное параллельное преобразование для эффективности",
+        "my": "စွမ်းဆောင်ရည်မြှင့်တင်ရန် အစုလိုက်ပြောင်းလဲမှု",
+        "bn": "দক্ষতার জন্য ব্যাচ সমান্তরাল রূপান্তর",
+        "ar": "تحويل دفعة متزامن للكفاءة",
+        "vi": "Chuyển đổi đồng thời hàng loạt để nâng cao hiệu quả"
+    },
+    "convert_realtime_progress": {
+        "zh-CN": "实时进度显示",
+        "en-US": "Real-time progress display",
+        "ru": "Отображение прогресса в реальном времени",
+        "my": "အချိန်နှင့်တပြေးညီ တိုးတက်မှု ပြသခြင်း",
+        "bn": "রিয়েল-টাইম অগ্রগতি প্রদর্শন",
+        "ar": "عرض التقدم في الوقت الفعلي",
+        "vi": "Hiển thị tiến trình theo thời gian thực"
+    },
+    "convert_operation_guide": {
+        "zh-CN": "操作说明",
+        "en-US": "Operation Guide",
+        "ru": "Руководство по эксплуатации",
+        "my": "လုပ်ဆောင်ချက် လမ်းညွှန်",
+        "bn": "অপারেশন গাইড",
+        "ar": "دليل التشغيل",
+        "vi": "Hướng dẫn vận hành"
+    },
 }
 
 DEFAULT_LANG = "zh-CN"
