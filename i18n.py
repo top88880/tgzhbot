@@ -559,6 +559,190 @@ TEXTS = {
         "ar": "🔙 رجوع / Back",
         "vi": "🔙 Quay lại / Back"
     },
+    # Proxy panel messages
+    "proxy_panel_admin_only": {
+        "zh-CN": "❌ 仅管理员可以访问代理管理面板",
+        "en-US": "❌ Admin access only for proxy management panel",
+        "ru": "❌ Доступ только для администраторов",
+        "my": "❌ စီမံခန့်ခွဲသူများသာ ဝင်ရောက်ခွင့်ရှိသည်",
+        "bn": "❌ শুধুমাত্র প্রশাসকদের জন্য অ্যাক্সেস",
+        "ar": "❌ الوصول للمسؤولين فقط",
+        "vi": "❌ Chỉ quản trị viên mới truy cập được"
+    },
+    "proxy_enabled_success": {
+        "zh-CN": "✅ 代理已启用",
+        "en-US": "✅ Proxy enabled",
+        "ru": "✅ Прокси включено",
+        "my": "✅ Proxy ဖွင့်ထားပြီး",
+        "bn": "✅ প্রক্সি সক্রিয় করা হয়েছে",
+        "ar": "✅ تم تفعيل البروكسي",
+        "vi": "✅ Proxy đã được bật"
+    },
+    "proxy_disabled_success": {
+        "zh-CN": "✅ 代理已禁用",
+        "en-US": "✅ Proxy disabled",
+        "ru": "✅ Прокси отключено",
+        "my": "✅ Proxy ပိတ်ထားပြီး",
+        "bn": "✅ প্রক্সি নিষ্ক্রিয় করা হয়েছে",
+        "ar": "✅ تم تعطيل البروكسي",
+        "vi": "✅ Proxy đã được tắt"
+    },
+    "proxy_reload_success": {
+        "zh-CN": "✅ 已重新加载代理列表\n📡 加载了 {count} 个代理",
+        "en-US": "✅ Proxy list reloaded\n📡 Loaded {count} proxies",
+        "ru": "✅ Список прокси перезагружен\n📡 Загружено {count} прокси",
+        "my": "✅ Proxy စာရင်းကို ပြန်လည်တင်ပြီးပါပြီ\n📡 {count} ခု တင်ထားသည်",
+        "bn": "✅ প্রক্সি তালিকা পুনরায় লোড হয়েছে\n📡 {count} প্রক্সি লোড করা হয়েছে",
+        "ar": "✅ تم إعادة تحميل قائمة البروكسي\n📡 تم تحميل {count} بروكسي",
+        "vi": "✅ Đã tải lại danh sách proxy\n📡 Đã tải {count} proxy"
+    },
+    "proxy_testing_start": {
+        "zh-CN": "🧪 开始测试代理...\n这可能需要几分钟时间",
+        "en-US": "🧪 Starting proxy test...\nThis may take a few minutes",
+        "ru": "🧪 Начинается тест прокси...\nЭто может занять несколько минут",
+        "my": "🧪 Proxy စမ်းသပ်မှု စတင်နေပါသည်...\nမိနစ်အနည်းငယ် ကြာနိုင်ပါသည်",
+        "bn": "🧪 প্রক্সি পরীক্ষা শুরু হচ্ছে...\nএটি কয়েক মিনিট সময় নিতে পারে",
+        "ar": "🧪 بدء اختبار البروكسي...\nقد يستغرق هذا بضع دقائق",
+        "vi": "🧪 Bắt đầu kiểm tra proxy...\nĐiều này có thể mất vài phút"
+    },
+    "proxy_test_results": {
+        "zh-CN": "📊 代理测试结果\n\n✅ 可用: {working}个\n❌ 失败: {failed}个\n⏱️ 耗时: {duration}秒",
+        "en-US": "📊 Proxy Test Results\n\n✅ Working: {working}\n❌ Failed: {failed}\n⏱️ Duration: {duration}s",
+        "ru": "📊 Результаты теста прокси\n\n✅ Работает: {working}\n❌ Не работает: {failed}\n⏱️ Время: {duration}с",
+        "my": "📊 Proxy စမ်းသပ်မှု ရလဒ်များ\n\n✅ အလုပ်လုပ်သည်: {working}\n❌ မအောင်မြင်ပါ: {failed}\n⏱️ ကြာချိန်: {duration}စက္ကန့်",
+        "bn": "📊 প্রক্সি পরীক্ষার ফলাফল\n\n✅ কাজ করছে: {working}\n❌ ব্যর্থ: {failed}\n⏱️ সময়: {duration}সে",
+        "ar": "📊 نتائج اختبار البروكسي\n\n✅ يعمل: {working}\n❌ فشل: {failed}\n⏱️ المدة: {duration}ث",
+        "vi": "📊 Kết quả kiểm tra Proxy\n\n✅ Hoạt động: {working}\n❌ Thất bại: {failed}\n⏱️ Thời gian: {duration}s"
+    },
+    "proxy_cleanup_confirm": {
+        "zh-CN": "🧹 <b>清理失效代理</b>\n\n确认要清理测试失败的代理吗？\n这将从proxy.txt中移除失效代理。",
+        "en-US": "🧹 <b>Clean Invalid Proxies</b>\n\nConfirm cleaning failed proxies?\nThis will remove invalid proxies from proxy.txt.",
+        "ru": "🧹 <b>Очистка неработающих прокси</b>\n\nПодтвердить очистку неудачных прокси?\nЭто удалит неработающие прокси из proxy.txt.",
+        "my": "🧹 <b>မမှန်ကန်သော Proxy များကို ရှင်းလင်းရန်</b>\n\nမအောင်မြင်သော proxy များကို ရှင်းလင်းမှာ သေချာပါသလား?\nဒါက proxy.txt ထဲက မမှန်ကန်သော proxy များကို ဖယ်ရှားပါမည်။",
+        "bn": "🧹 <b>অবৈধ প্রক্সি পরিষ্কার করুন</b>\n\nব্যর্থ প্রক্সি পরিষ্কার করার নিশ্চিত করুন?\nএটি proxy.txt থেকে অবৈধ প্রক্সি সরিয়ে দেবে।",
+        "ar": "🧹 <b>تنظيف البروكسيات غير الصالحة</b>\n\nتأكيد تنظيف البروكسيات الفاشلة؟\nسيؤدي هذا إلى إزالة البروكسيات غير الصالحة من proxy.txt.",
+        "vi": "🧹 <b>Dọn dẹp Proxy không hợp lệ</b>\n\nXác nhận dọn dẹp proxy thất bại?\nĐiều này sẽ xóa proxy không hợp lệ khỏi proxy.txt."
+    },
+    "proxy_cleanup_success": {
+        "zh-CN": "✅ 清理完成\n🗑️ 移除了 {count} 个失效代理",
+        "en-US": "✅ Cleanup completed\n🗑️ Removed {count} invalid proxies",
+        "ru": "✅ Очистка завершена\n🗑️ Удалено {count} неработающих прокси",
+        "my": "✅ ရှင်းလင်းမှု ပြီးစီးပါပြီ\n🗑️ မမှန်ကန်သော proxy {count} ခု ဖယ်ရှားပြီးပါပြီ",
+        "bn": "✅ পরিষ্কার সম্পন্ন হয়েছে\n🗑️ {count} অবৈধ প্রক্সি সরানো হয়েছে",
+        "ar": "✅ اكتمل التنظيف\n🗑️ تمت إزالة {count} بروكسي غير صالح",
+        "vi": "✅ Dọn dẹp hoàn tất\n🗑️ Đã xóa {count} proxy không hợp lệ"
+    },
+    "proxy_no_test_results": {
+        "zh-CN": "❌ 没有测试结果\n请先运行代理测试",
+        "en-US": "❌ No test results\nPlease run proxy test first",
+        "ru": "❌ Нет результатов теста\nПожалуйста, сначала запустите тест прокси",
+        "my": "❌ စမ်းသပ်မှု ရလဒ်များ မရှိပါ\nကျေးဇူးပြု၍ ပထမဦးစွာ proxy စမ်းသပ်မှု လုပ်ပါ",
+        "bn": "❌ কোন পরীক্ষার ফলাফল নেই\nপ্রথমে প্রক্সি পরীক্ষা চালান",
+        "ar": "❌ لا توجد نتائج اختبار\nيرجى تشغيل اختبار البروكسي أولاً",
+        "vi": "❌ Không có kết quả kiểm tra\nVui lòng chạy kiểm tra proxy trước"
+    },
+    # Help and status messages
+    "help_text": {
+        "zh-CN": get_text_by_key("zh-CN", "help", "title"),
+        "en-US": get_text_by_key("en-US", "help", "title"),
+        "ru": get_text_by_key("ru", "help", "title"),
+        "my": get_text_by_key("my", "help", "title"),
+        "bn": get_text_by_key("bn", "help", "title"),
+        "ar": get_text_by_key("ar", "help", "title"),
+        "vi": get_text_by_key("vi", "help", "title")
+    },
+    # Convert messages
+    "convert_menu_title": {
+        "zh-CN": "🔄 <b>格式转换</b>",
+        "en-US": "🔄 <b>Format Conversion</b>",
+        "ru": "🔄 <b>Преобразование формата</b>",
+        "my": "🔄 <b>ဖော်မတ်ပြောင်းခြင်း</b>",
+        "bn": "🔄 <b>ফরম্যাট রূপান্তর</b>",
+        "ar": "🔄 <b>تحويل التنسيق</b>",
+        "vi": "🔄 <b>Chuyển đổi định dạng</b>"
+    },
+    "convert_select_direction": {
+        "zh-CN": "请选择转换方向：",
+        "en-US": "Please select conversion direction:",
+        "ru": "Пожалуйста, выберите направление преобразования:",
+        "my": "ကျေးဇူးပြု၍ ပြောင်းလဲမှု ဦးတည်ချက်ကို ရွေးချယ်ပါ:",
+        "bn": "রূপান্তর দিক নির্বাচন করুন:",
+        "ar": "يرجى تحديد اتجاه التحويل:",
+        "vi": "Vui lòng chọn hướng chuyển đổi:"
+    },
+    "convert_tdata_to_session": {
+        "zh-CN": "📤 TData → Session",
+        "en-US": "📤 TData → Session",
+        "ru": "📤 TData → Session",
+        "my": "📤 TData → Session",
+        "bn": "📤 TData → Session",
+        "ar": "📤 TData → Session",
+        "vi": "📤 TData → Session"
+    },
+    "convert_session_to_tdata": {
+        "zh-CN": "📥 Session → TData",
+        "en-US": "📥 Session → TData",
+        "ru": "📥 Session → TData",
+        "my": "📥 Session → Session",
+        "bn": "📥 Session → TData",
+        "ar": "📥 Session → TData",
+        "vi": "📥 Session → TData"
+    },
+    "convert_upload_prompt": {
+        "zh-CN": "请上传包含{format}文件的ZIP压缩包...",
+        "en-US": "Please upload ZIP file containing {format} files...",
+        "ru": "Пожалуйста, загрузите ZIP-файл, содержащий файлы {format}...",
+        "my": "{format} ဖိုင်များပါရှိသော ZIP ဖိုင်ကို တင်ပါ...",
+        "bn": "{format} ফাইল সমন্বিত ZIP ফাইল আপলোড করুন...",
+        "ar": "يرجى تحميل ملف ZIP يحتوي على ملفات {format}...",
+        "vi": "Vui lòng tải lên tệp ZIP chứa các tệp {format}..."
+    },
+    "convert_processing": {
+        "zh-CN": "🔄 正在转换...\n\n处理中: {current}/{total}\n已完成: {success}\n失败: {failed}",
+        "en-US": "🔄 Converting...\n\nProcessing: {current}/{total}\nCompleted: {success}\nFailed: {failed}",
+        "ru": "🔄 Преобразование...\n\nОбработка: {current}/{total}\nЗавершено: {success}\nНеудачно: {failed}",
+        "my": "🔄 ပြောင်းလဲနေသည်...\n\nလုပ်ဆောင်နေသည်: {current}/{total}\nပြီးစီးပြီ: {success}\nမအောင်မြင်ပါ: {failed}",
+        "bn": "🔄 রূপান্তর হচ্ছে...\n\nপ্রক্রিয়াকরণ: {current}/{total}\nসম্পন্ন: {success}\nব্যর্থ: {failed}",
+        "ar": "🔄 جارٍ التحويل...\n\nمعالجة: {current}/{total}\nمكتمل: {success}\nفشل: {failed}",
+        "vi": "🔄 Đang chuyển đổi...\n\nĐang xử lý: {current}/{total}\nĐã hoàn thành: {success}\nThất bại: {failed}"
+    },
+    "convert_success": {
+        "zh-CN": "✅ 转换完成！\n\n✅ 成功: {success}\n❌ 失败: {failed}\n⏱️ 耗时: {duration}秒",
+        "en-US": "✅ Conversion completed!\n\n✅ Success: {success}\n❌ Failed: {failed}\n⏱️ Duration: {duration}s",
+        "ru": "✅ Преобразование завершено!\n\n✅ Успешно: {success}\n❌ Неудачно: {failed}\n⏱️ Время: {duration}с",
+        "my": "✅ ပြောင်းလဲမှု ပြီးစီးပါပြီ!\n\n✅ အောင်မြင်: {success}\n❌ မအောင်မြင်: {failed}\n⏱️ ကြာချိန်: {duration}စက္ကန့်",
+        "bn": "✅ রূপান্তর সম্পন্ন হয়েছে!\n\n✅ সফল: {success}\n❌ ব্যর্থ: {failed}\n⏱️ সময়: {duration}সে",
+        "ar": "✅ اكتمل التحويل!\n\n✅ نجح: {success}\n❌ فشل: {failed}\n⏱️ المدة: {duration}ث",
+        "vi": "✅ Chuyển đổi hoàn tất!\n\n✅ Thành công: {success}\n❌ Thất bại: {failed}\n⏱️ Thời gian: {duration}s"
+    },
+    # Check account messages
+    "check_upload_prompt": {
+        "zh-CN": "📤 <b>账号检测</b>\n\n请上传包含TData或Session文件的ZIP压缩包...\n\n支持格式:\n• TData文件夹\n• Session文件",
+        "en-US": "📤 <b>Account Check</b>\n\nPlease upload ZIP file containing TData or Session files...\n\nSupported formats:\n• TData folders\n• Session files",
+        "ru": "📤 <b>Проверка аккаунтов</b>\n\nПожалуйста, загрузите ZIP-файл, содержащий файлы TData или Session...\n\nПоддерживаемые форматы:\n• Папки TData\n• Файлы Session",
+        "my": "📤 <b>အကောင့်စစ်ဆေးခြင်း</b>\n\nTData သို့မဟုတ် Session ဖိုင်များပါရှိသော ZIP ဖိုင်ကို တင်ပါ...\n\nပံ့ပိုးထားသော ဖော်မတ်များ:\n• TData ဖိုင်တွဲများ\n• Session ဖိုင်များ",
+        "bn": "📤 <b>অ্যাকাউন্ট পরীক্ষা</b>\n\nTData বা Session ফাইল সমন্বিত ZIP ফাইল আপলোড করুন...\n\nসমর্থিত ফরম্যাট:\n• TData ফোল্ডার\n• Session ফাইল",
+        "ar": "📤 <b>فحص الحساب</b>\n\nيرجى تحميل ملف ZIP يحتوي على ملفات TData أو Session...\n\nالتنسيقات المدعومة:\n• مجلدات TData\n• ملفات Session",
+        "vi": "📤 <b>Kiểm tra tài khoản</b>\n\nVui lòng tải lên tệp ZIP chứa các tệp TData hoặc Session...\n\nĐịnh dạng được hỗ trợ:\n• Thư mục TData\n• Tệp Session"
+    },
+    "check_processing": {
+        "zh-CN": "🔍 正在检测...\n\n处理: {current}/{total}\n✅ 正常: {normal}\n❌ 异常: {abnormal}\n⏱️ 已用时: {elapsed}秒",
+        "en-US": "🔍 Checking...\n\nProcessing: {current}/{total}\n✅ Normal: {normal}\n❌ Abnormal: {abnormal}\n⏱️ Elapsed: {elapsed}s",
+        "ru": "🔍 Проверка...\n\nОбработка: {current}/{total}\n✅ Нормальные: {normal}\n❌ Аномальные: {abnormal}\n⏱️ Прошло: {elapsed}с",
+        "my": "🔍 စစ်ဆေးနေသည်...\n\nလုပ်ဆောင်နေသည်: {current}/{total}\n✅ ပုံမှန်: {normal}\n❌ ပုံမှန်မဟုတ်သော: {abnormal}\n⏱️ ကုန်ဆုံးသွားပြီ: {elapsed}စက္ကန့်",
+        "bn": "🔍 পরীক্ষা করা হচ্ছে...\n\nপ্রক্রিয়াকরণ: {current}/{total}\n✅ স্বাভাবিক: {normal}\n❌ অস্বাভাবিক: {abnormal}\n⏱️ অতিবাহিত: {elapsed}সে",
+        "ar": "🔍 جارٍ الفحص...\n\nمعالجة: {current}/{total}\n✅ طبيعي: {normal}\n❌ غير طبيعي: {abnormal}\n⏱️ منقضي: {elapsed}ث",
+        "vi": "🔍 Đang kiểm tra...\n\nĐang xử lý: {current}/{total}\n✅ Bình thường: {normal}\n❌ Bất thường: {abnormal}\n⏱️ Đã trôi qua: {elapsed}s"
+    },
+    "check_complete": {
+        "zh-CN": "✅ <b>检测完成</b>\n\n📊 总数: {total}\n✅ 正常: {normal}\n❌ 异常: {abnormal}\n⏱️ 总耗时: {duration}秒",
+        "en-US": "✅ <b>Check Complete</b>\n\n📊 Total: {total}\n✅ Normal: {normal}\n❌ Abnormal: {abnormal}\n⏱️ Total time: {duration}s",
+        "ru": "✅ <b>Проверка завершена</b>\n\n📊 Всего: {total}\n✅ Нормальные: {normal}\n❌ Аномальные: {abnormal}\n⏱️ Общее время: {duration}с",
+        "my": "✅ <b>စစ်ဆေးမှု ပြီးစီးပါပြီ</b>\n\n📊 စုစုပေါင်း: {total}\n✅ ပုံမှန်: {normal}\n❌ ပုံမှန်မဟုတ်သော: {abnormal}\n⏱️ စုစုပေါင်းအချိန်: {duration}စက္ကန့်",
+        "bn": "✅ <b>পরীক্ষা সম্পন্ন</b>\n\n📊 মোট: {total}\n✅ স্বাভাবিক: {normal}\n❌ অস্বাভাবিক: {abnormal}\n⏱️ মোট সময়: {duration}সে",
+        "ar": "✅ <b>اكتمل الفحص</b>\n\n📊 المجموع: {total}\n✅ طبيعي: {normal}\n❌ غير طبيعي: {abnormal}\n⏱️ الوقت الإجمالي: {duration}ث",
+        "vi": "✅ <b>Kiểm tra hoàn tất</b>\n\n📊 Tổng: {total}\n✅ Bình thường: {normal}\n❌ Bất thường: {abnormal}\n⏱️ Tổng thời gian: {duration}s"
+    },
 }
 
 DEFAULT_LANG = "zh-CN"

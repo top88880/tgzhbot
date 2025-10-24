@@ -5039,6 +5039,35 @@ class EnhancedBot:
         # 新增：广播媒体上传处理
         self.dp.add_handler(MessageHandler(Filters.photo, self.handle_photo))
         self.dp.add_handler(MessageHandler(Filters.text & ~Filters.command, self.handle_text))
+        
+        # 添加错误处理器
+        self.dp.add_error_handler(self.error_handler)
+    
+    def error_handler(self, update: Update, context: CallbackContext):
+        """处理错误，避免崩溃"""
+        try:
+            raise context.error
+        except Exception as e:
+            print(f"❌ Error occurred: {type(e).__name__}: {e}")
+            import traceback
+            traceback.print_exc()
+            
+            # 尝试通知用户
+            if update and update.effective_user:
+                try:
+                    user_id = update.effective_user.id
+                    error_msg = self.t(user_id, {
+                        "zh-CN": "❌ 发生错误，请稍后重试",
+                        "en-US": "❌ An error occurred, please try again later",
+                        "ru": "❌ Произошла ошибка, попробуйте позже",
+                        "my": "❌ အမှားတစ်ခု ဖြစ်ပွားခဲ့သည်၊ နောက်မှ ထပ်စမ်းကြည့်ပါ",
+                        "bn": "❌ একটি ত্রুটি ঘটেছে, পরে আবার চেষ্টা করুন",
+                        "ar": "❌ حدث خطأ، يرجى المحاولة مرة أخرى لاحقًا",
+                        "vi": "❌ Đã xảy ra lỗi, vui lòng thử lại sau"
+                    })
+                    self.safe_send_message(update, error_msg)
+                except:
+                    pass
     
     def safe_send_message(self, update, text, parse_mode=None, reply_markup=None):
         """安全发送消息"""
@@ -6193,7 +6222,7 @@ class EnhancedBot:
         
         # 权限检查（仅管理员可访问）
         if not self.db.is_admin(user_id):
-            query.answer(get_text(user_lang, 'proxy', 'admin_only'))
+            query.answer(self.t(user_id, TEXTS["proxy_panel_admin_only"]))
             return
         
         query.answer()
@@ -6206,37 +6235,37 @@ class EnhancedBot:
         residential_count = sum(1 for p in self.proxy_manager.proxies if p.get('is_residential', False))
         
         # Get localized status texts
-        config_status = get_text(user_lang, 'proxy', 'use_proxy_true') if config.USE_PROXY else get_text(user_lang, 'proxy', 'use_proxy_false')
-        proxy_switch_status = get_text(user_lang, 'proxy', 'enabled') if proxy_enabled_db else get_text(user_lang, 'proxy', 'disabled')
-        actual_mode = get_text(user_lang, 'proxy', 'proxy_mode') if proxy_mode_active else get_text(user_lang, 'proxy', 'local_mode')
+        config_status = get_text_by_key(user_lang, 'proxy', 'use_proxy_true') if config.USE_PROXY else get_text_by_key(user_lang, 'proxy', 'use_proxy_false')
+        proxy_switch_status = get_text_by_key(user_lang, 'proxy', 'enabled') if proxy_enabled_db else get_text_by_key(user_lang, 'proxy', 'disabled')
+        actual_mode = get_text_by_key(user_lang, 'proxy', 'proxy_mode') if proxy_mode_active else get_text_by_key(user_lang, 'proxy', 'local_mode')
         
         # 构建代理管理面板信息
         proxy_text = f"""
-<b>{get_text(user_lang, 'proxy', 'title')}</b>
+<b>{get_text_by_key(user_lang, 'proxy', 'title')}</b>
 
-<b>{get_text(user_lang, 'proxy', 'current_status')}</b>
-{get_text(user_lang, 'proxy', 'system_config').format(config=config_status)}
-{get_text(user_lang, 'proxy', 'proxy_switch').format(status=proxy_switch_status)}
-{get_text(user_lang, 'proxy', 'proxy_file').format(file=config.PROXY_FILE)}
-{get_text(user_lang, 'proxy', 'available_proxies').format(count=len(self.proxy_manager.proxies))}
-{get_text(user_lang, 'proxy', 'residential_proxies').format(count=residential_count)}
-{get_text(user_lang, 'proxy', 'normal_timeout').format(timeout=config.PROXY_TIMEOUT)}
-{get_text(user_lang, 'proxy', 'residential_timeout').format(timeout=config.RESIDENTIAL_PROXY_TIMEOUT)}
-{get_text(user_lang, 'proxy', 'actual_mode').format(mode=actual_mode)}
+<b>{get_text_by_key(user_lang, 'proxy', 'current_status')}</b>
+{get_text_by_key(user_lang, 'proxy', 'system_config', config=config_status)}
+{get_text_by_key(user_lang, 'proxy', 'proxy_switch', status=proxy_switch_status)}
+{get_text_by_key(user_lang, 'proxy', 'proxy_file', file=config.PROXY_FILE)}
+{get_text_by_key(user_lang, 'proxy', 'available_proxies', count=len(self.proxy_manager.proxies))}
+{get_text_by_key(user_lang, 'proxy', 'residential_proxies', count=residential_count)}
+{get_text_by_key(user_lang, 'proxy', 'normal_timeout', timeout=config.PROXY_TIMEOUT)}
+{get_text_by_key(user_lang, 'proxy', 'residential_timeout', timeout=config.RESIDENTIAL_PROXY_TIMEOUT)}
+{get_text_by_key(user_lang, 'proxy', 'actual_mode', mode=actual_mode)}
 
-<b>{get_text(user_lang, 'proxy', 'format_support')}</b>
-{get_text(user_lang, 'proxy', 'http_format')}
-{get_text(user_lang, 'proxy', 'http_auth_format')}
-{get_text(user_lang, 'proxy', 'socks5_format')}
-{get_text(user_lang, 'proxy', 'socks4_format')}
-{get_text(user_lang, 'proxy', 'abc_format')}
+<b>{get_text_by_key(user_lang, 'proxy', 'format_support')}</b>
+{get_text_by_key(user_lang, 'proxy', 'http_format')}
+{get_text_by_key(user_lang, 'proxy', 'http_auth_format')}
+{get_text_by_key(user_lang, 'proxy', 'socks5_format')}
+{get_text_by_key(user_lang, 'proxy', 'socks4_format')}
+{get_text_by_key(user_lang, 'proxy', 'abc_format')}
 
-<b>{get_text(user_lang, 'proxy', 'operation_guide')}</b>
-{get_text(user_lang, 'proxy', 'enable_disable')}
-{get_text(user_lang, 'proxy', 'reload')}
-{get_text(user_lang, 'proxy', 'test')}
-{get_text(user_lang, 'proxy', 'view_status')}
-{get_text(user_lang, 'proxy', 'statistics')}
+<b>{get_text_by_key(user_lang, 'proxy', 'operation_guide')}</b>
+{get_text_by_key(user_lang, 'proxy', 'enable_disable')}
+{get_text_by_key(user_lang, 'proxy', 'reload')}
+{get_text_by_key(user_lang, 'proxy', 'test')}
+{get_text_by_key(user_lang, 'proxy', 'view_status')}
+{get_text_by_key(user_lang, 'proxy', 'statistics')}
         """
         
         # 创建操作按钮 - use localized labels
@@ -6244,22 +6273,22 @@ class EnhancedBot:
         
         # 代理开关控制按钮
         if proxy_enabled_db:
-            buttons.append([InlineKeyboardButton(get_text(user_lang, 'proxy', 'btn_disable'), callback_data="proxy_disable")])
+            buttons.append([InlineKeyboardButton(get_text_by_key(user_lang, 'proxy', 'btn_disable'), callback_data="proxy_disable")])
         else:
-            buttons.append([InlineKeyboardButton(get_text(user_lang, 'proxy', 'btn_enable'), callback_data="proxy_enable")])
+            buttons.append([InlineKeyboardButton(get_text_by_key(user_lang, 'proxy', 'btn_enable'), callback_data="proxy_enable")])
         
         # 代理管理操作按钮
         buttons.extend([
             [
-                InlineKeyboardButton(get_text(user_lang, 'proxy', 'btn_reload'), callback_data="proxy_reload"),
-                InlineKeyboardButton(get_text(user_lang, 'proxy', 'btn_status'), callback_data="proxy_status")
+                InlineKeyboardButton(get_text_by_key(user_lang, 'proxy', 'btn_reload'), callback_data="proxy_reload"),
+                InlineKeyboardButton(get_text_by_key(user_lang, 'proxy', 'btn_status'), callback_data="proxy_status")
             ],
             [
-                InlineKeyboardButton(get_text(user_lang, 'proxy', 'btn_test'), callback_data="proxy_test"),
+                InlineKeyboardButton(get_text_by_key(user_lang, 'proxy', 'btn_test'), callback_data="proxy_test"),
                 InlineKeyboardButton("📈 代理统计", callback_data="proxy_stats")
             ],
             [
-                InlineKeyboardButton(get_text(user_lang, 'proxy', 'btn_clean'), callback_data="proxy_cleanup"),
+                InlineKeyboardButton(get_text_by_key(user_lang, 'proxy', 'btn_clean'), callback_data="proxy_cleanup"),
                 InlineKeyboardButton("⚡ 速度优化", callback_data="proxy_optimize")
             ],
             [InlineKeyboardButton(get_menu_labels(user_lang)["back_main"], callback_data="back_to_main")]
@@ -11495,13 +11524,16 @@ class EnhancedBot:
         current_lang = self.db.get_user_lang(user_id)
         current_label = get_lang_label(current_lang)
         
+        title = self.t(user_id, TEXTS["language_selection_title"])
+        current_text = self.t(user_id, TEXTS["current_language"], lang=current_label)
+        prompt = self.t(user_id, TEXTS["select_language_prompt"])
+        
         text = f"""
-<b>🌐 选择语言 / Language Selection</b>
+{title}
 
-当前语言 / Current: {current_label}
+{current_text}
 
-请选择您喜欢的语言：
-Please select your preferred language:
+{prompt}
         """
         
         # 创建语言选择按钮
@@ -11515,7 +11547,8 @@ Please select your preferred language:
             buttons.append([InlineKeyboardButton(button_text, callback_data=f"set_lang_{lang_code}")])
         
         # 添加返回按钮
-        buttons.append([InlineKeyboardButton("🔙 返回 / Back", callback_data="back_to_main")])
+        back_text = self.t(user_id, TEXTS["back_button"])
+        buttons.append([InlineKeyboardButton(back_text, callback_data="back_to_main")])
         
         keyboard = InlineKeyboardMarkup(buttons)
         
@@ -11539,12 +11572,14 @@ Please select your preferred language:
         # 设置用户语言
         if self.db.set_user_lang(user_id, lang_code):
             lang_label = get_lang_label(lang_code)
-            query.answer(f"✅ 语言已切换到 {lang_label}", show_alert=False)
+            success_msg = self.t_by_lang(lang_code, TEXTS["language_changed"], lang=lang_label)
+            query.answer(success_msg, show_alert=False)
             
             # 刷新主菜单显示新语言
             self.show_main_menu(update, user_id)
         else:
-            query.answer("❌ 设置语言失败", show_alert=True)
+            fail_msg = self.t(user_id, TEXTS["language_change_failed"])
+            query.answer(fail_msg, show_alert=True)
     
     def run(self):
         print("🚀 启动增强版机器人（速度优化版）...")
