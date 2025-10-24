@@ -4988,36 +4988,6 @@ class EnhancedBot:
         """
         return get_text(lang, *keys, default=default, **kwargs)
     
-    def t_by_lang(self, lang: str, text_dict: dict, default: str = "", **kwargs) -> str:
-        """
-        Translate text for a specific language (when user_id is not available).
-        
-        Args:
-            lang: Language code
-            text_dict: Dictionary with translations for each language
-            default: Default text if translation not found
-            **kwargs: Format parameters for string formatting
-        
-        Returns:
-            Translated and formatted string
-        """
-        lang = normalize_lang(lang)
-        
-        # Get text for specified language, fallback to default language
-        if isinstance(text_dict, dict):
-            text = text_dict.get(lang) or text_dict.get(DEFAULT_LANG) or default
-        else:
-            text = str(text_dict) if text_dict else default
-        
-        # Apply formatting if kwargs provided
-        if kwargs and text:
-            try:
-                return text.format(**kwargs)
-            except (KeyError, ValueError) as e:
-                print(f"⚠️ Text formatting error: {e}")
-                return text
-        return text or default
-    
     def setup_handlers(self):
         self.dp.add_handler(CommandHandler("start", self.start_command))
         self.dp.add_handler(CommandHandler("help", self.help_command))
@@ -5065,15 +5035,7 @@ class EnhancedBot:
             if update and update.effective_user:
                 try:
                     user_id = update.effective_user.id
-                    error_msg = self.t(user_id, {
-                        "zh-CN": "❌ 发生错误，请稍后重试",
-                        "en-US": "❌ An error occurred, please try again later",
-                        "ru": "❌ Произошла ошибка, попробуйте позже",
-                        "my": "❌ အမှားတစ်ခု ဖြစ်ပွားခဲ့သည်၊ နောက်မှ ထပ်စမ်းကြည့်ပါ",
-                        "bn": "❌ একটি ত্রুটি ঘটেছে, পরে আবার চেষ্টা করুন",
-                        "ar": "❌ حدث خطأ، يرجى المحاولة مرة أخرى لاحقًا",
-                        "vi": "❌ Đã xảy ra lỗi, vui lòng thử lại sau"
-                    })
+                    error_msg = self.t(user_id, "error_generic", error=str(e))
                     self.safe_send_message(update, error_msg)
                 except:
                     pass
