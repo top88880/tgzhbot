@@ -5189,9 +5189,9 @@ class EnhancedBot:
         """显示主菜单（统一方法）"""
         # 获取用户信息
         if update.callback_query:
-            first_name = update.callback_query.from_user.first_name or "用户"
+            first_name = update.callback_query.from_user.first_name or self.t(user_id, "default_user")
         else:
-            first_name = update.effective_user.first_name or "用户"
+            first_name = update.effective_user.first_name or self.t(user_id, "default_user")
         # 获取会员状态（使用 check_membership 方法）
         is_member, level, expiry = self.db.check_membership(user_id)
         
