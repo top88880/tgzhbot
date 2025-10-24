@@ -5568,7 +5568,7 @@ class EnhancedBot:
         user_id = update.effective_user.id
         
         if not self.db.is_admin(user_id):
-            self.safe_send_message(update, "❌ 仅管理员可以使用此命令")
+            self.safe_send_message(update, self.t(user_id, TEXTS["admin_only_access"]))
             return
         
         # 获取当前代理状态
@@ -5626,7 +5626,7 @@ class EnhancedBot:
         if context.args:
             if context.args[0] == "reload":
                 self.proxy_manager.load_proxies()
-                self.safe_send_message(update, f"✅ 已重新加载代理文件\n📡 新代理数量: {len(self.proxy_manager.proxies)}个")
+                self.safe_send_message(update, self.t(user_id, TEXTS["proxy_reload_count"], count=len(self.proxy_manager.proxies)))
                 return
             elif context.args[0] == "status":
                 self.show_proxy_detailed_status(update)
@@ -5654,18 +5654,18 @@ class EnhancedBot:
             
             self.safe_send_message(update, status_text, 'HTML')
         else:
-            self.safe_send_message(update, "❌ 没有可用的代理")
+            self.safe_send_message(update, self.t(user_id, TEXTS["proxy_no_available"]))
     
     def test_proxy_command(self, update: Update, context: CallbackContext):
         """测试代理命令"""
         user_id = update.effective_user.id
         
         if not self.db.is_admin(user_id):
-            self.safe_send_message(update, "❌ 仅管理员可以使用此命令")
+            self.safe_send_message(update, self.t(user_id, TEXTS["admin_only_access"]))
             return
         
         if not self.proxy_manager.proxies:
-            self.safe_send_message(update, "❌ 没有可用的代理进行测试")
+            self.safe_send_message(update, self.t(user_id, TEXTS["proxy_no_test"]))
             return
         
         # 异步处理代理测试
@@ -5756,11 +5756,11 @@ class EnhancedBot:
         user_id = update.effective_user.id
         
         if not self.db.is_admin(user_id):
-            self.safe_send_message(update, "❌ 仅管理员可以使用此命令")
+            self.safe_send_message(update, self.t(user_id, TEXTS["admin_only_access"]))
             return
         
         if not self.proxy_manager.proxies:
-            self.safe_send_message(update, "❌ 没有可用的代理进行清理")
+            self.safe_send_message(update, self.t(user_id, TEXTS["proxy_no_cleanup"]))
             return
         
         # 检查是否有确认参数
@@ -6362,7 +6362,7 @@ class EnhancedBot:
         # 检查权限
         is_member, level, _ = self.db.check_membership(user_id)
         if not is_member and not self.db.is_admin(user_id):
-            self.safe_edit_message(query, "❌ 需要会员权限才能使用检测功能")
+            self.safe_edit_message(query, self.t(user_id, TEXTS["need_membership"]))
             return
         
         if not TELETHON_AVAILABLE:
@@ -6399,11 +6399,11 @@ class EnhancedBot:
         # 检查权限
         is_member, level, _ = self.db.check_membership(user_id)
         if not is_member and not self.db.is_admin(user_id):
-            self.safe_edit_message(query, "❌ 需要会员权限才能使用格式转换功能")
+            self.safe_edit_message(query, self.t(user_id, TEXTS["need_membership"]))
             return
         
         if not OPENTELE_AVAILABLE:
-            self.safe_edit_message(query, "❌ 格式转换功能不可用\n\n原因: opentele库未安装\n💡 请安装: pip install opentele")
+            self.safe_edit_message(query, self.t(user_id, TEXTS["convert_feature_unavailable"]))
             return
         
         text = """
@@ -6507,7 +6507,7 @@ class EnhancedBot:
         # 检查权限
         is_member, level, _ = self.db.check_membership(user_id)
         if not is_member and not self.db.is_admin(user_id):
-            self.safe_edit_message(query, "❌ 需要会员权限才能使用2FA修改功能")
+            self.safe_edit_message(query, self.t(user_id, TEXTS["need_membership"]))
             return
         
         if not TELETHON_AVAILABLE:
@@ -7099,7 +7099,7 @@ class EnhancedBot:
 
         is_member, _, _ = self.db.check_membership(user_id)
         if not is_member and not self.db.is_admin(user_id):
-            self.safe_send_message(update, "❌ 需要会员权限")
+            self.safe_send_message(update, self.t(user_id, TEXTS["need_membership"]))
             return
 
         if document.file_size > 100 * 1024 * 1024:
@@ -8598,7 +8598,7 @@ class EnhancedBot:
         # 权限检查
         is_member, _, _ = self.db.check_membership(user_id)
         if not is_member and not self.db.is_admin(user_id):
-            self.safe_send_message(update, "❌ 需要会员权限才能使用账号分类功能")
+            self.safe_send_message(update, self.t(user_id, TEXTS["need_membership"]))
             return
         
         if not CLASSIFY_AVAILABLE or not self.classifier:
@@ -8618,9 +8618,9 @@ class EnhancedBot:
         is_member, _, _ = self.db.check_membership(user_id)
         if not is_member and not self.db.is_admin(user_id):
             if query:
-                self.safe_edit_message(query, "❌ 需要会员权限")
+                self.safe_edit_message(query, self.t(user_id, TEXTS["need_membership"]))
             else:
-                self.safe_send_message(update, "❌ 需要会员权限")
+                self.safe_send_message(update, self.t(user_id, TEXTS["need_membership"]))
             return
         
         if not CLASSIFY_AVAILABLE or not self.classifier:

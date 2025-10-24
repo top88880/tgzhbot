@@ -1309,6 +1309,151 @@ Vui lòng tải lên tệp ZIP chứa các tệp TData hoặc Session..."""
         "ar": "<b>📊 المجموع: {count} مسؤول</b>",
         "vi": "<b>📊 Tổng: {count} quản trị viên</b>"
     },
+    # Proxy command messages  
+    "proxy_panel_title": {
+        "zh-CN": "<b>📡 代理管理面板</b>",
+        "en-US": "<b>📡 Proxy Management Panel</b>",
+        "ru": "<b>📡 Панель управления прокси</b>",
+        "my": "<b>📡 Proxy စီမံခန့်ခွဲမှု ပြားပြား</b>",
+        "bn": "<b>📡 প্রক্সি ম্যানেজমেন্ট প্যানেল</b>",
+        "ar": "<b>📡 لوحة إدارة البروكسي</b>",
+        "vi": "<b>📡 Bảng điều khiển quản lý Proxy</b>"
+    },
+    "proxy_current_status_section": {
+        "zh-CN": "<b>📊 当前状态</b>",
+        "en-US": "<b>📊 Current Status</b>",
+        "ru": "<b>📊 Текущий статус</b>",
+        "my": "<b>📊 လက်ရှိအခြေအနေ</b>",
+        "bn": "<b>📊 বর্তমান অবস্থা</b>",
+        "ar": "<b>📊 الحالة الحالية</b>",
+        "vi": "<b>📊 Trạng thái hiện tại</b>"
+    },
+    "proxy_format_support_section": {
+        "zh-CN": "<b>📝 代理格式支持</b>",
+        "en-US": "<b>📝 Proxy Format Support</b>",
+        "ru": "<b>📝 Поддерживаемые форматы прокси</b>",
+        "my": "<b>📝 Proxy ဖော်မတ် ပံ့ပိုးမှု</b>",
+        "bn": "<b>📝 প্রক্সি ফরম্যাট সাপোর্ট</b>",
+        "ar": "<b>📝 دعم تنسيق البروكسي</b>",
+        "vi": "<b>📝 Hỗ trợ định dạng Proxy</b>"
+    },
+    "proxy_no_available": {
+        "zh-CN": "❌ 没有可用的代理",
+        "en-US": "❌ No proxies available",
+        "ru": "❌ Нет доступных прокси",
+        "my": "❌ အသုံးပြုနိုင်သော proxy များ မရှိပါ",
+        "bn": "❌ কোন প্রক্সি উপলব্ধ নেই",
+        "ar": "❌ لا توجد بروكسيات متاحة",
+        "vi": "❌ Không có proxy nào khả dụng"
+    },
+    "proxy_no_test": {
+        "zh-CN": "❌ 没有可用的代理进行测试",
+        "en-US": "❌ No proxies available for testing",
+        "ru": "❌ Нет доступных прокси для тестирования",
+        "my": "❌ စမ်းသပ်ရန်အတွက် အသုံးပြုနိုင်သော proxy များ မရှိပါ",
+        "bn": "❌ পরীক্ষার জন্য কোন প্রক্সি উপলব্ধ নেই",
+        "ar": "❌ لا توجد بروكسيات متاحة للاختبار",
+        "vi": "❌ Không có proxy nào để kiểm tra"
+    },
+    "proxy_no_cleanup": {
+        "zh-CN": "❌ 没有可用的代理进行清理",
+        "en-US": "❌ No proxies available for cleanup",
+        "ru": "❌ Нет доступных прокси для очистки",
+        "my": "❌ ရှင်းလင်းရန်အတွက် အသုံးပြုနိုင်သော proxy များ မရှိပါ",
+        "bn": "❌ পরিষ্কারের জন্য কোন প্রক্সি উপলব্ধ নেই",
+        "ar": "❌ لا توجد بروكسيات متاحة للتنظيف",
+        "vi": "❌ Không có proxy nào để dọn dẹp"
+    },
+    "proxy_testing_progress": {
+        "zh-CN": "🧪 <b>代理测试中...</b>\n\n📊 正在初始化测试环境...",
+        "en-US": "🧪 <b>Testing Proxies...</b>\n\n📊 Initializing test environment...",
+        "ru": "🧪 <b>Тестирование прокси...</b>\n\n📊 Инициализация тестовой среды...",
+        "my": "🧪 <b>Proxy များကို စမ်းသပ်နေသည်...</b>\n\n📊 စမ်းသပ်မှု ပတ်ဝန်းကျင်ကို စတင်နေသည်...",
+        "bn": "🧪 <b>প্রক্সি পরীক্ষা করা হচ্ছে...</b>\n\n📊 টেস্ট পরিবেশ শুরু করা হচ্ছে...",
+        "ar": "🧪 <b>اختبار البروكسيات...</b>\n\n📊 تهيئة بيئة الاختبار...",
+        "vi": "🧪 <b>Đang kiểm tra Proxy...</b>\n\n📊 Đang khởi tạo môi trường kiểm tra..."
+    },
+    "proxy_testing_in_progress": {
+        "zh-CN": "🧪 <b>代理测试进行中...</b>\n\n📊 已测试: {tested}/{total}\n✅ 可用: {working}\n❌ 失败: {failed}",
+        "en-US": "🧪 <b>Proxy Test In Progress...</b>\n\n📊 Tested: {tested}/{total}\n✅ Working: {working}\n❌ Failed: {failed}",
+        "ru": "🧪 <b>Тест прокси в процессе...</b>\n\n📊 Протестировано: {tested}/{total}\n✅ Работает: {working}\n❌ Не работает: {failed}",
+        "my": "🧪 <b>Proxy စမ်းသပ်မှု လုပ်ဆောင်နေသည်...</b>\n\n📊 စမ်းသပ်ပြီး: {tested}/{total}\n✅ အလုပ်လုပ်သည်: {working}\n❌ မအောင်မြင်ပါ: {failed}",
+        "bn": "🧪 <b>প্রক্সি পরীক্ষা চলছে...</b>\n\n📊 পরীক্ষিত: {tested}/{total}\n✅ কাজ করছে: {working}\n❌ ব্যর্থ: {failed}",
+        "ar": "🧪 <b>اختبار البروكسي قيد التقدم...</b>\n\n📊 تم الاختبار: {tested}/{total}\n✅ يعمل: {working}\n❌ فشل: {failed}",
+        "vi": "🧪 <b>Đang kiểm tra Proxy...</b>\n\n📊 Đã kiểm tra: {tested}/{total}\n✅ Hoạt động: {working}\n❌ Thất bại: {failed}"
+    },
+    "proxy_testing_complete": {
+        "zh-CN": "✅ <b>代理测试完成！</b>\n\n📊 总数: {total}\n✅ 可用: {working}\n❌ 失败: {failed}\n⏱️ 耗时: {duration}秒",
+        "en-US": "✅ <b>Proxy Test Complete!</b>\n\n📊 Total: {total}\n✅ Working: {working}\n❌ Failed: {failed}\n⏱️ Duration: {duration}s",
+        "ru": "✅ <b>Тест прокси завершен!</b>\n\n📊 Всего: {total}\n✅ Работает: {working}\n❌ Не работает: {failed}\n⏱️ Время: {duration}с",
+        "my": "✅ <b>Proxy စမ်းသပ်မှု ပြီးစီးပါပြီ!</b>\n\n📊 စုစုပေါင်း: {total}\n✅ အလုပ်လုပ်သည်: {working}\n❌ မအောင်မြင်ပါ: {failed}\n⏱️ ကြာချိန်: {duration}စက္ကန့်",
+        "bn": "✅ <b>প্রক্সি পরীক্ষা সম্পন্ন!</b>\n\n📊 মোট: {total}\n✅ কাজ করছে: {working}\n❌ ব্যর্থ: {failed}\n⏱️ সময়: {duration}সে",
+        "ar": "✅ <b>اكتمل اختبار البروكسي!</b>\n\n📊 المجموع: {total}\n✅ يعمل: {working}\n❌ فشل: {failed}\n⏱️ المدة: {duration}ث",
+        "vi": "✅ <b>Kiểm tra Proxy hoàn tất!</b>\n\n📊 Tổng: {total}\n✅ Hoạt động: {working}\n❌ Thất bại: {failed}\n⏱️ Thời gian: {duration}s"
+    },
+    "proxy_cleanup_confirm_title": {
+        "zh-CN": "⚠️ <b>代理清理确认</b>",
+        "en-US": "⚠️ <b>Proxy Cleanup Confirmation</b>",
+        "ru": "⚠️ <b>Подтверждение очистки прокси</b>",
+        "my": "⚠️ <b>Proxy ရှင်းလင်းမှု အတည်ပြုချက်</b>",
+        "bn": "⚠️ <b>প্রক্সি পরিষ্কারের নিশ্চিতকরণ</b>",
+        "ar": "⚠️ <b>تأكيد تنظيف البروكسي</b>",
+        "vi": "⚠️ <b>Xác nhận dọn dẹp Proxy</b>"
+    },
+    "proxy_detailed_status_title": {
+        "zh-CN": "<b>📡 代理详细状态</b>\n\n",
+        "en-US": "<b>📡 Detailed Proxy Status</b>\n\n",
+        "ru": "<b>📡 Подробный статус прокси</b>\n\n",
+        "my": "<b>📡 Proxy အသေးစိတ်အခြေအနေ</b>\n\n",
+        "bn": "<b>📡 বিস্তারিত প্রক্সি স্ট্যাটাস</b>\n\n",
+        "ar": "<b>📡 حالة البروكسي التفصيلية</b>\n\n",
+        "vi": "<b>📡 Trạng thái Proxy chi tiết</b>\n\n"
+    },
+    "proxy_more_proxies": {
+        "zh-CN": "\n... 还有 {count} 个代理",
+        "en-US": "\n... and {count} more proxies",
+        "ru": "\n... и еще {count} прокси",
+        "my": "\n... နောက်ထပ် {count} ခု ရှိသေးသည်",
+        "bn": "\n... এবং আরও {count} প্রক্সি",
+        "ar": "\n... و {count} بروكسي آخر",
+        "vi": "\n... và {count} proxy khác"
+    },
+    "proxy_switch_status_section": {
+        "zh-CN": "\n\n<b>📊 代理开关状态</b>\n",
+        "en-US": "\n\n<b>📊 Proxy Switch Status</b>\n",
+        "ru": "\n\n<b>📊 Статус переключателя прокси</b>\n",
+        "my": "\n\n<b>📊 Proxy ခလုတ်အခြေအနေ</b>\n",
+        "bn": "\n\n<b>📊 প্রক্সি সুইচ স্ট্যাটাস</b>\n",
+        "ar": "\n\n<b>📊 حالة مفتاح البروكسي</b>\n",
+        "vi": "\n\n<b>📊 Trạng thái chuyển đổi Proxy</b>\n"
+    },
+    "proxy_status_current": {
+        "zh-CN": "• 当前状态: {status}\n",
+        "en-US": "• Current Status: {status}\n",
+        "ru": "• Текущий статус: {status}\n",
+        "my": "• လက်ရှိအခြေအနေ: {status}\n",
+        "bn": "• বর্তমান অবস্থা: {status}\n",
+        "ar": "• الحالة الحالية: {status}\n",
+        "vi": "• Trạng thái hiện tại: {status}\n"
+    },
+    "proxy_status_update_time": {
+        "zh-CN": "• 更新时间: {time}\n",
+        "en-US": "• Updated: {time}\n",
+        "ru": "• Обновлено: {time}\n",
+        "my": "• ပြင်ဆင်သည့်အချိန်: {time}\n",
+        "bn": "• আপডেট করা হয়েছে: {time}\n",
+        "ar": "• تم التحديث: {time}\n",
+        "vi": "• Đã cập nhật: {time}\n"
+    },
+    "proxy_status_operator": {
+        "zh-CN": "• 操作人员: {user}\n",
+        "en-US": "• Operator: {user}\n",
+        "ru": "• Оператор: {user}\n",
+        "my": "• စစ်ဆေးသူ: {user}\n",
+        "bn": "• অপারেটর: {user}\n",
+        "ar": "• المشغل: {user}\n",
+        "vi": "• Người vận hành: {user}\n"
+    },
 }
 
 DEFAULT_LANG = "zh-CN"
