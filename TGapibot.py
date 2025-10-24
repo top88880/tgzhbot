@@ -33,6 +33,15 @@ import threading
 import struct
 import base64
 from pathlib import Path
+from i18n import (
+    get_menu_labels,
+    list_languages,
+    normalize_lang,
+    get_lang_label,
+    get_welcome_title,
+    get_text,
+    DEFAULT_LANG,
+)
 print("🔍 Telegram账号检测机器人 V8.0")
 print(f"📅 当前时间: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
 
@@ -1117,6 +1126,14 @@ class Database:
             # 列已存在，忽略
             pass
         
+        # 迁移：添加lang列到users表
+        try:
+            c.execute("ALTER TABLE users ADD COLUMN lang TEXT DEFAULT 'zh-CN'")
+            print("✅ 已添加 users.lang 列")
+        except sqlite3.OperationalError:
+            # 列已存在，忽略
+            pass
+        
         conn.commit()
         conn.close()
     
@@ -1126,16 +1143,23 @@ class Database:
             c = conn.cursor()
             now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             
+            # 查询已有的register_time和lang，保留它们
+            c.execute("SELECT register_time, lang FROM users WHERE user_id = ?", (user_id,))
+            old = c.fetchone()
+            register_time = old[0] if old and old[0] else now
+            lang = old[1] if old and old[1] else DEFAULT_LANG
+            
             c.execute("""
                 INSERT OR REPLACE INTO users 
-                (user_id, username, first_name, register_time, last_active, status)
-                VALUES (?, ?, ?, ?, ?, ?)
-            """, (user_id, username, first_name, now, now, status))
+                (user_id, username, first_name, register_time, last_active, status, lang)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+            """, (user_id, username, first_name, register_time, now, status, lang))
             
             conn.commit()
             conn.close()
             return True
-        except:
+        except Exception as e:
+            print(f"❌ 保存用户失败: {e}")
             return False
     
     def save_membership(self, user_id: int, level: str):
@@ -1379,6 +1403,44 @@ class Database:
             return rows_deleted > 0
         except Exception as e:
             print(f"❌ 撤销会员失败: {e}")
+            return False
+    
+    def get_user_lang(self, user_id: int) -> str:
+        """获取用户语言设置"""
+        try:
+            conn = sqlite3.connect(self.db_name)
+            c = conn.cursor()
+            c.execute("SELECT lang FROM users WHERE user_id = ?", (user_id,))
+            row = c.fetchone()
+            conn.close()
+            return normalize_lang(row[0]) if row and row[0] else DEFAULT_LANG
+        except:
+            return DEFAULT_LANG
+
+    def set_user_lang(self, user_id: int, lang_code: str) -> bool:
+        """设置用户语言"""
+        try:
+            lang_code = normalize_lang(lang_code)
+            conn = sqlite3.connect(self.db_name)
+            c = conn.cursor()
+            c.execute("SELECT register_time, username, first_name, status FROM users WHERE user_id = ?", (user_id,))
+            row = c.fetchone()
+            now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            if row:
+                c.execute("UPDATE users SET lang=?, last_active=? WHERE user_id=?", (lang_code, now, user_id))
+            else:
+                c.execute(
+                    """
+                    INSERT INTO users (user_id, username, first_name, register_time, last_active, status, lang)
+                    VALUES (?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (user_id, "", "", now, now, "", lang_code)
+                )
+            conn.commit()
+            conn.close()
+            return True
+        except Exception as e:
+            print(f"❌ 设置用户语言失败: {e}")
             return False
     
     def redeem_code(self, user_id: int, code: str) -> Tuple[bool, str, int]:
@@ -4899,6 +4961,10 @@ class EnhancedBot:
         
         # 专用：广播消息回调处理器（必须在通用回调之前注册）
         self.dp.add_handler(CallbackQueryHandler(self.handle_broadcast_callbacks_router, pattern=r"^broadcast_"))
+        
+        # 语言切换处理器
+        self.dp.add_handler(CallbackQueryHandler(self.handle_language_menu, pattern=r"^language_menu$"))
+        self.dp.add_handler(CallbackQueryHandler(self.handle_set_language, pattern=r"^set_lang_"))
 
         # 通用回调处理（需放在特定回调之后）
         self.dp.add_handler(CallbackQueryHandler(self.handle_callbacks))
@@ -5062,9 +5128,13 @@ class EnhancedBot:
             first_name = update.callback_query.from_user.first_name or "用户"
         else:
             first_name = update.effective_user.first_name or "用户"
-        
         # 获取会员状态（使用 check_membership 方法）
         is_member, level, expiry = self.db.check_membership(user_id)
+        
+        # 获取用户语言
+        user_lang = self.db.get_user_lang(user_id)
+        menu_labels = get_menu_labels(user_lang)
+        welcome_title = get_welcome_title(user_lang)
         
         if self.db.is_admin(user_id):
             member_status = "👑 管理员"
@@ -5074,7 +5144,7 @@ class EnhancedBot:
             member_status = "❌ 无会员"
         
         welcome_text = f"""
-<b>🔍 Telegram账号机器人 V8.0</b>
+<b>{welcome_title}</b>
 
 👤 <b>用户信息</b>
 • 昵称: {first_name}
@@ -5089,42 +5159,43 @@ class EnhancedBot:
         """
         
 
-        # 创建横排2x2布局的主菜单按钮（在原有两行后新增一行“🔗 API转换”）
+        # 创建横排2x2布局的主菜单按钮（使用本地化标签）
         buttons = [
             [
-                InlineKeyboardButton("🚀 账号检测", callback_data="start_check"),
-                InlineKeyboardButton("🔄 格式转换", callback_data="format_conversion")
+                InlineKeyboardButton(menu_labels["check"], callback_data="start_check"),
+                InlineKeyboardButton(menu_labels["convert"], callback_data="format_conversion")
             ],
             [
-                InlineKeyboardButton("🔐 修改2FA", callback_data="change_2fa"),
-                InlineKeyboardButton("🛡️ 防止找回", callback_data="prevent_recovery")
+                InlineKeyboardButton(menu_labels["change2fa"], callback_data="change_2fa"),
+                InlineKeyboardButton(menu_labels["antirecover"], callback_data="prevent_recovery")
             ],
             [
-                InlineKeyboardButton("🔗 API转换", callback_data="api_conversion"),
-                InlineKeyboardButton("📦 账号拆分", callback_data="classify_menu")
+                InlineKeyboardButton(menu_labels["api"], callback_data="api_conversion"),
+                InlineKeyboardButton(menu_labels["classify"], callback_data="classify_menu")
             ],
             [
-                InlineKeyboardButton("📝 文件重命名", callback_data="rename_start"),
-                InlineKeyboardButton("🧩 账户合并", callback_data="merge_start")
+                InlineKeyboardButton(menu_labels["rename"], callback_data="rename_start"),
+                InlineKeyboardButton(menu_labels["merge"], callback_data="merge_start")
             ],
             [
-                InlineKeyboardButton("💳 开通/兑换会员", callback_data="vip_menu")
+                InlineKeyboardButton(menu_labels["vip"], callback_data="vip_menu")
             ],
             [
-                InlineKeyboardButton("ℹ️ 帮助", callback_data="help")
+                InlineKeyboardButton(menu_labels["help"], callback_data="help")
             ]
         ]
 
         # 管理员按钮
         if self.db.is_admin(user_id):
             buttons.append([
-                InlineKeyboardButton("👑 管理员面板", callback_data="admin_panel"),
-                InlineKeyboardButton("📡 代理管理", callback_data="proxy_panel")
+                InlineKeyboardButton(menu_labels["admin_panel"], callback_data="admin_panel"),
+                InlineKeyboardButton(menu_labels["proxy_panel"], callback_data="proxy_panel")
             ])
 
-        # 底部功能按钮（如果已把“帮助”放到第三行左侧，可将这里的帮助去掉或改为“⚙️ 状态”）
+        # 底部功能按钮
         buttons.append([
-            InlineKeyboardButton("⚙️ 状态", callback_data="status")
+            InlineKeyboardButton(menu_labels["status"], callback_data="status"),
+            InlineKeyboardButton(menu_labels["switch_lang"], callback_data="language_menu")
         ])
 
         
@@ -6038,10 +6109,11 @@ class EnhancedBot:
     def show_proxy_panel(self, update: Update, query):
         """显示代理管理面板"""
         user_id = query.from_user.id
+        user_lang = self.db.get_user_lang(user_id)
         
         # 权限检查（仅管理员可访问）
         if not self.db.is_admin(user_id):
-            query.answer("❌ 仅管理员可以访问代理管理面板")
+            query.answer(get_text(user_lang, 'proxy', 'admin_only'))
             return
         
         query.answer()
@@ -6053,59 +6125,64 @@ class EnhancedBot:
         # 统计住宅代理数量
         residential_count = sum(1 for p in self.proxy_manager.proxies if p.get('is_residential', False))
         
+        # Get localized status texts
+        config_status = get_text(user_lang, 'proxy', 'use_proxy_true') if config.USE_PROXY else get_text(user_lang, 'proxy', 'use_proxy_false')
+        proxy_switch_status = get_text(user_lang, 'proxy', 'enabled') if proxy_enabled_db else get_text(user_lang, 'proxy', 'disabled')
+        actual_mode = get_text(user_lang, 'proxy', 'proxy_mode') if proxy_mode_active else get_text(user_lang, 'proxy', 'local_mode')
+        
         # 构建代理管理面板信息
         proxy_text = f"""
-<b>📡 代理管理面板</b>
+<b>{get_text(user_lang, 'proxy', 'title')}</b>
 
-<b>📊 当前状态</b>
-• 系统配置: {'🟢USE_PROXY=true' if config.USE_PROXY else '🔴USE_PROXY=false'}
-• 代理开关: {'🟢已启用' if proxy_enabled_db else '🔴已禁用'}
-• 代理文件: {config.PROXY_FILE}
-• 可用代理: {len(self.proxy_manager.proxies)}个
-• 住宅代理: {residential_count}个
-• 普通超时: {config.PROXY_TIMEOUT}秒
-• 住宅超时: {config.RESIDENTIAL_PROXY_TIMEOUT}秒
-• 实际模式: {'🟢代理模式' if proxy_mode_active else '🔴本地模式'}
+<b>{get_text(user_lang, 'proxy', 'current_status')}</b>
+{get_text(user_lang, 'proxy', 'system_config').format(config=config_status)}
+{get_text(user_lang, 'proxy', 'proxy_switch').format(status=proxy_switch_status)}
+{get_text(user_lang, 'proxy', 'proxy_file').format(file=config.PROXY_FILE)}
+{get_text(user_lang, 'proxy', 'available_proxies').format(count=len(self.proxy_manager.proxies))}
+{get_text(user_lang, 'proxy', 'residential_proxies').format(count=residential_count)}
+{get_text(user_lang, 'proxy', 'normal_timeout').format(timeout=config.PROXY_TIMEOUT)}
+{get_text(user_lang, 'proxy', 'residential_timeout').format(timeout=config.RESIDENTIAL_PROXY_TIMEOUT)}
+{get_text(user_lang, 'proxy', 'actual_mode').format(mode=actual_mode)}
 
-<b>📝 代理格式支持</b>
-• HTTP: ip:port
-• HTTP认证: ip:port:username:password  
-• SOCKS5: socks5:ip:port:username:password
-• SOCKS4: socks4:ip:port
-• ABCProxy住宅代理: host.abcproxy.vip:port:username:password
+<b>{get_text(user_lang, 'proxy', 'format_support')}</b>
+{get_text(user_lang, 'proxy', 'http_format')}
+{get_text(user_lang, 'proxy', 'http_auth_format')}
+{get_text(user_lang, 'proxy', 'socks5_format')}
+{get_text(user_lang, 'proxy', 'socks4_format')}
+{get_text(user_lang, 'proxy', 'abc_format')}
 
-<b>🛠️ 操作说明</b>
-• 启用/禁用：控制代理开关状态
-• 重新加载：从文件重新读取代理列表
-• 测试代理：检测代理连接性能
-• 查看状态：显示详细代理信息
-• 代理统计：查看使用数据统计
+<b>{get_text(user_lang, 'proxy', 'operation_guide')}</b>
+{get_text(user_lang, 'proxy', 'enable_disable')}
+{get_text(user_lang, 'proxy', 'reload')}
+{get_text(user_lang, 'proxy', 'test')}
+{get_text(user_lang, 'proxy', 'view_status')}
+{get_text(user_lang, 'proxy', 'statistics')}
         """
         
-        # 创建操作按钮
+        # 创建操作按钮 - use localized labels
         buttons = []
         
         # 代理开关控制按钮
         if proxy_enabled_db:
-            buttons.append([InlineKeyboardButton("🔴 禁用代理", callback_data="proxy_disable")])
+            buttons.append([InlineKeyboardButton(get_text(user_lang, 'proxy', 'btn_disable'), callback_data="proxy_disable")])
         else:
-            buttons.append([InlineKeyboardButton("🟢 启用代理", callback_data="proxy_enable")])
+            buttons.append([InlineKeyboardButton(get_text(user_lang, 'proxy', 'btn_enable'), callback_data="proxy_enable")])
         
         # 代理管理操作按钮
         buttons.extend([
             [
-                InlineKeyboardButton("🔄 重新加载代理", callback_data="proxy_reload"),
-                InlineKeyboardButton("📊 代理状态", callback_data="proxy_status")
+                InlineKeyboardButton(get_text(user_lang, 'proxy', 'btn_reload'), callback_data="proxy_reload"),
+                InlineKeyboardButton(get_text(user_lang, 'proxy', 'btn_status'), callback_data="proxy_status")
             ],
             [
-                InlineKeyboardButton("🧪 测试代理", callback_data="proxy_test"),
+                InlineKeyboardButton(get_text(user_lang, 'proxy', 'btn_test'), callback_data="proxy_test"),
                 InlineKeyboardButton("📈 代理统计", callback_data="proxy_stats")
             ],
             [
-                InlineKeyboardButton("🧹 清理失效代理", callback_data="proxy_cleanup"),
+                InlineKeyboardButton(get_text(user_lang, 'proxy', 'btn_clean'), callback_data="proxy_cleanup"),
                 InlineKeyboardButton("⚡ 速度优化", callback_data="proxy_optimize")
             ],
-            [InlineKeyboardButton("🔙 返回管理面板", callback_data="admin_panel")]
+            [InlineKeyboardButton(get_menu_labels(user_lang)["back_main"], callback_data="back_to_main")]
         ])
         
         keyboard = InlineKeyboardMarkup(buttons)
@@ -6143,67 +6220,7 @@ class EnhancedBot:
             self.handle_merge_finish(update, context, query)
         elif query.data == "back_to_main":
             self.show_main_menu(update, user_id)
-            # 返回主菜单 - 横排2x2布局
-            query.answer()
-            user = query.from_user
-            user_id = user.id
-            first_name = user.first_name or "用户"
-            is_member, level, expiry = self.db.check_membership(user_id)
-            
-            if self.db.is_admin(user_id):
-                member_status = "👑 管理员"
-            elif is_member:
-                member_status = f"🎁 {level}"
-            else:
-                member_status = "❌ 无会员"
-            
-            welcome_text = f"""
-<b>🔍 Telegram账号机器人 V8.0</b>
-
-👤 <b>用户信息</b>
-• 昵称: {first_name}
-• ID: <code>{user_id}</code>
-• 会员: {member_status}
-• 到期: {expiry}
-
-📡 <b>代理状态</b>
-• 代理模式: {'🟢启用' if self.proxy_manager.is_proxy_mode_active(self.db) else '🔴本地连接'}
-• 代理数量: {len(self.proxy_manager.proxies)}个
-• 快速模式: {'🟢开启' if config.PROXY_FAST_MODE else '🔴关闭'}
-• 当前时间: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
-            """
-            
-            # 创建横排2x2布局的主菜单按钮
-            buttons = [
-                [
-                    InlineKeyboardButton("🚀 账号检测", callback_data="start_check"),
-                    InlineKeyboardButton("🔄 格式转换", callback_data="format_conversion")
-                ],
-                [
-                    InlineKeyboardButton("🔐 修改2FA", callback_data="change_2fa"),
-                    InlineKeyboardButton("🛡️ 防止找回", callback_data="prevent_recovery")
-                ]
-            ]
-            
-            # 管理员按钮
-            if self.db.is_admin(user_id):
-                buttons.append([
-                    InlineKeyboardButton("👑 管理员面板", callback_data="admin_panel"),
-                    InlineKeyboardButton("📡 代理管理", callback_data="proxy_panel")
-                ])
-            
-            # 底部功能按钮
-            buttons.append([
-                InlineKeyboardButton("ℹ️ 帮助", callback_data="help"),
-                InlineKeyboardButton("⚙️ 状态", callback_data="status")
-            ])
-            
-            keyboard = InlineKeyboardMarkup(buttons)
-            query.edit_message_text(
-                text=welcome_text,
-                reply_markup=keyboard,
-                parse_mode='HTML'
-            )
+            return
         elif data == "help":
             self.handle_help_callback(query)
         elif data == "status":
@@ -6479,18 +6496,21 @@ class EnhancedBot:
     
     def handle_help_callback(self, query):
         query.answer()
-        help_text = """
-<b>📖 详细说明</b>
+        user_id = query.from_user.id
+        user_lang = self.db.get_user_lang(user_id)
+        
+        help_text = f"""
+<b>{get_text(user_lang, 'help', 'title')}</b>
 
-<b>🚀 增强功能</b>
-• 代理连接模式自动检测
-• 状态|数量分离实时显示
-• 检测完成后自动发送分类文件
+<b>{get_text(user_lang, 'help', 'enhanced_features')}</b>
+{get_text(user_lang, 'help', 'proxy_mode_detect')}
+{get_text(user_lang, 'help', 'status_display')}
+{get_text(user_lang, 'help', 'auto_send_files')}
 
-<b>📡 代理优势</b>
-• 提高检测成功率
-• 避免IP限制
-• 自动故障转移
+<b>{get_text(user_lang, 'help', 'proxy_advantages')}</b>
+{get_text(user_lang, 'help', 'improve_success')}
+{get_text(user_lang, 'help', 'avoid_ip_limit')}
+{get_text(user_lang, 'help', 'auto_failover')}
         """
         
         self.safe_edit_message(query, help_text, 'HTML')
@@ -6498,14 +6518,17 @@ class EnhancedBot:
     def handle_status_callback(self, query):
         query.answer()
         user_id = query.from_user.id
+        user_lang = self.db.get_user_lang(user_id)
+        
+        current_time = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
         
         status_text = f"""
-<b>⚙️ 系统状态</b>
+<b>{get_text(user_lang, 'status', 'title')}</b>
 
-<b>🤖 机器人信息</b>
-• 版本: 8.0 (完整版)
-• 状态: ✅正常运行
-• 当前时间: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
+<b>{get_text(user_lang, 'status', 'bot_info')}</b>
+{get_text(user_lang, 'status', 'version')}
+{get_text(user_lang, 'status', 'status_running')}
+{get_text(user_lang, 'status', 'current_time').format(time=current_time)}
 
 """
         
@@ -6514,9 +6537,10 @@ class EnhancedBot:
     def handle_admin_panel(self, query):
         """管理员面板"""
         user_id = query.from_user.id
+        user_lang = self.db.get_user_lang(user_id)
         
         if not self.db.is_admin(user_id):
-            query.answer("❌ 仅管理员可访问")
+            query.answer(get_text(user_lang, 'common', 'admin_only'))
             return
         
         # 获取统计信息
@@ -11376,6 +11400,71 @@ class EnhancedBot:
         
         # 清除用户状态
         self.db.save_user(user_id, "", "", "")
+    
+    # ================================
+    # 语言切换功能
+    # ================================
+    
+    def handle_language_menu(self, update: Update, context: CallbackContext):
+        """显示语言选择菜单"""
+        query = update.callback_query
+        user_id = query.from_user.id
+        query.answer()
+        
+        # 获取当前语言
+        current_lang = self.db.get_user_lang(user_id)
+        current_label = get_lang_label(current_lang)
+        
+        text = f"""
+<b>🌐 选择语言 / Language Selection</b>
+
+当前语言 / Current: {current_label}
+
+请选择您喜欢的语言：
+Please select your preferred language:
+        """
+        
+        # 创建语言选择按钮
+        buttons = []
+        for lang_code, lang_label in list_languages():
+            # 标记当前选中的语言
+            if lang_code == current_lang:
+                button_text = f"✅ {lang_label}"
+            else:
+                button_text = lang_label
+            buttons.append([InlineKeyboardButton(button_text, callback_data=f"set_lang_{lang_code}")])
+        
+        # 添加返回按钮
+        buttons.append([InlineKeyboardButton("🔙 返回 / Back", callback_data="back_to_main")])
+        
+        keyboard = InlineKeyboardMarkup(buttons)
+        
+        try:
+            query.edit_message_text(
+                text=text,
+                reply_markup=keyboard,
+                parse_mode='HTML'
+            )
+        except Exception as e:
+            print(f"⚠️ 编辑语言菜单消息失败: {e}")
+    
+    def handle_set_language(self, update: Update, context: CallbackContext):
+        """设置用户语言"""
+        query = update.callback_query
+        user_id = query.from_user.id
+        
+        # 从callback_data中提取语言代码
+        lang_code = query.data.replace("set_lang_", "")
+        
+        # 设置用户语言
+        if self.db.set_user_lang(user_id, lang_code):
+            lang_label = get_lang_label(lang_code)
+            query.answer(f"✅ 语言已切换到 {lang_label}", show_alert=False)
+            
+            # 刷新主菜单显示新语言
+            self.show_main_menu(update, user_id)
+        else:
+            query.answer("❌ 设置语言失败", show_alert=True)
     
     def run(self):
         print("🚀 启动增强版机器人（速度优化版）...")
