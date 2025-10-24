@@ -458,6 +458,15 @@ TEXTS = {
         "ar": "👤 <b>معلومات المستخدم</b>",
         "vi": "👤 <b>Thông tin người dùng</b>"
     },
+    "default_user": {
+        "zh-CN": "用户",
+        "en-US": "User",
+        "ru": "Пользователь",
+        "my": "အသုံးပြုသူ",
+        "bn": "ব্যবহারকারী",
+        "ar": "المستخدم",
+        "vi": "Người dùng"
+    },
     "nickname": {
         "zh-CN": "• 昵称: {name}",
         "en-US": "• Nickname: {name}",
@@ -639,6 +648,232 @@ TEXTS = {
         "bn": "🔙 ফিরে যান / Back",
         "ar": "🔙 رجوع / Back",
         "vi": "🔙 Quay lại / Back"
+    },
+    # Help command specific strings
+    "help_main_features": {
+        "zh-CN": "主要功能",
+        "en-US": "Main Features",
+        "ru": "Основные функции",
+        "my": "အဓိကအင်္ဂါရပ်များ",
+        "bn": "প্রধান বৈশিষ্ট্য",
+        "ar": "الميزات الرئيسية",
+        "vi": "Tính năng chính"
+    },
+    "help_feature_1": {
+        "zh-CN": "代理连接模式自动检测账号状态",
+        "en-US": "Proxy connection mode auto-detects account status",
+        "ru": "Режим прокси-соединения автоматически определяет статус аккаунта",
+        "my": "Proxy ချိတ်ဆက်မှုမုဒ်သည် အကောင့်အခြေအနေကို အလိုအလျောက် စစ်ဆေးသည်",
+        "bn": "প্রক্সি সংযোগ মোড স্বয়ংক্রিয়ভাবে অ্যাকাউন্ট স্থিতি সনাক্ত করে",
+        "ar": "وضع اتصال البروكسي يكتشف حالة الحساب تلقائيًا",
+        "vi": "Chế độ kết nối proxy tự động phát hiện trạng thái tài khoản"
+    },
+    "help_feature_2": {
+        "zh-CN": "实时进度显示和自动文件发送",
+        "en-US": "Real-time progress display and automatic file sending",
+        "ru": "Отображение прогресса в реальном времени и автоматическая отправка файлов",
+        "my": "အချိန်နှင့်တပြေးညီ တိုးတက်မှုပြသခြင်းနှင့် အလိုအလျောက် ဖိုင်ပေးပို့ခြင်း",
+        "bn": "রিয়েল-টাইম অগ্রগতি প্রদর্শন এবং স্বয়ংক্রিয় ফাইল পাঠানো",
+        "ar": "عرض التقدم في الوقت الفعلي وإرسال الملفات تلقائيًا",
+        "vi": "Hiển thị tiến trình theo thời gian thực và gửi tệp tự động"
+    },
+    "help_feature_3": {
+        "zh-CN": "支持Session和TData格式",
+        "en-US": "Supports Session and TData formats",
+        "ru": "Поддержка форматов Session и TData",
+        "my": "Session နှင့် TData ဖော်မတ်များကို ပံ့ပိုးသည်",
+        "bn": "Session এবং TData ফরম্যাট সমর্থন করে",
+        "ar": "يدعم تنسيقات Session و TData",
+        "vi": "Hỗ trợ định dạng Session và TData"
+    },
+    "help_supported_formats": {
+        "zh-CN": "支持格式",
+        "en-US": "Supported Formats",
+        "ru": "Поддерживаемые форматы",
+        "my": "ပံ့ပိုးထားသော ဖော်မတ်များ",
+        "bn": "সমর্থিত ফরম্যাট",
+        "ar": "التنسيقات المدعومة",
+        "vi": "Định dạng được hỗ trợ"
+    },
+    "help_files": {
+        "zh-CN": "文件",
+        "en-US": "files",
+        "ru": "файлы",
+        "my": "ဖိုင်များ",
+        "bn": "ফাইল",
+        "ar": "ملفات",
+        "vi": "tệp"
+    },
+    "help_folders": {
+        "zh-CN": "文件夹",
+        "en-US": "folders",
+        "ru": "папки",
+        "my": "ဖိုင်တွဲများ",
+        "bn": "ফোল্ডার",
+        "ar": "مجلدات",
+        "vi": "thư mục"
+    },
+    "help_archives": {
+        "zh-CN": "压缩包",
+        "en-US": "archives",
+        "ru": "архивы",
+        "my": "ဖိုင်များ",
+        "bn": "সংরক্ষণাগার",
+        "ar": "أرشيف",
+        "vi": "tệp nén"
+    },
+    "help_format_conversion": {
+        "zh-CN": "格式转换",
+        "en-US": "Format Conversion",
+        "ru": "Преобразование формата",
+        "my": "ဖော်မတ်ပြောင်းခြင်း",
+        "bn": "ফরম্যাট রূপান্তর",
+        "ar": "تحويل التنسيق",
+        "vi": "Chuyển đổi định dạng"
+    },
+    "help_batch_processing": {
+        "zh-CN": "批量并发处理",
+        "en-US": "Batch concurrent processing",
+        "ru": "Пакетная параллельная обработка",
+        "my": "အစုလိုက် တစ်ပြိုင်နက် စီမံဆောင်ရွက်ခြင်း",
+        "bn": "ব্যাচ সমান্তরাল প্রক্রিয়াকরণ",
+        "ar": "معالجة دفعة متزامنة",
+        "vi": "Xử lý đồng thời hàng loạt"
+    },
+    "help_proxy_features": {
+        "zh-CN": "代理功能",
+        "en-US": "Proxy Features",
+        "ru": "Функции прокси",
+        "my": "Proxy လုပ်ဆောင်ချက်များ",
+        "bn": "প্রক্সি বৈশিষ্ট্য",
+        "ar": "ميزات البروكسي",
+        "vi": "Tính năng Proxy"
+    },
+    "help_proxy_auto_read": {
+        "zh-CN": "自动读取proxy.txt文件",
+        "en-US": "Auto-read proxy.txt file",
+        "ru": "Автоматическое чтение файла proxy.txt",
+        "my": "proxy.txt ဖိုင်ကို အလိုအလျောက် ဖတ်ခြင်း",
+        "bn": "স্বয়ংক্রিয়ভাবে proxy.txt ফাইল পড়ুন",
+        "ar": "قراءة ملف proxy.txt تلقائيًا",
+        "vi": "Tự động đọc tệp proxy.txt"
+    },
+    "help_proxy_support": {
+        "zh-CN": "支持HTTP/SOCKS4/SOCKS5代理",
+        "en-US": "Supports HTTP/SOCKS4/SOCKS5 proxies",
+        "ru": "Поддержка прокси HTTP/SOCKS4/SOCKS5",
+        "my": "HTTP/SOCKS4/SOCKS5 proxy များကို ပံ့ပိုးသည်",
+        "bn": "HTTP/SOCKS4/SOCKS5 প্রক্সি সমর্থন করে",
+        "ar": "يدعم بروكسيات HTTP/SOCKS4/SOCKS5",
+        "vi": "Hỗ trợ proxy HTTP/SOCKS4/SOCKS5"
+    },
+    "help_admin_commands": {
+        "zh-CN": "管理员命令",
+        "en-US": "Admin Commands",
+        "ru": "Команды администратора",
+        "my": "စီမံခန့်ခွဲသူ အမိန့်များ",
+        "bn": "প্রশাসক কমান্ড",
+        "ar": "أوامر المسؤول",
+        "vi": "Lệnh quản trị"
+    },
+    "help_speed_optimization": {
+        "zh-CN": "速度优化功能",
+        "en-US": "Speed Optimization",
+        "ru": "Оптимизация скорости",
+        "my": "အမြန်နှုန်းမြှင့်တင်ခြင်း",
+        "bn": "গতি অপ্টিমাইজেশন",
+        "ar": "تحسين السرعة",
+        "vi": "Tối ưu hóa tốc độ"
+    },
+    "help_username": {
+        "zh-CN": "用户名",
+        "en-US": "username",
+        "ru": "имя пользователя",
+        "my": "အသုံးပြုသူအမည်",
+        "bn": "ব্যবহারকারীর নাম",
+        "ar": "اسم المستخدم",
+        "vi": "tên người dùng"
+    },
+    "help_add_admin": {
+        "zh-CN": "添加管理员",
+        "en-US": "Add admin",
+        "ru": "Добавить администратора",
+        "my": "စီမံခန့်ခွဲသူထည့်ရန်",
+        "bn": "প্রশাসক যোগ করুন",
+        "ar": "إضافة مسؤول",
+        "vi": "Thêm quản trị viên"
+    },
+    "help_remove_admin": {
+        "zh-CN": "移除管理员",
+        "en-US": "Remove admin",
+        "ru": "Удалить администратора",
+        "my": "စီမံခန့်ခွဲသူဖယ်ရှားရန်",
+        "bn": "প্রশাসক সরান",
+        "ar": "إزالة المسؤول",
+        "vi": "Xóa quản trị viên"
+    },
+    "help_list_admins": {
+        "zh-CN": "查看管理员列表",
+        "en-US": "List admins",
+        "ru": "Список администраторов",
+        "my": "စီမံခန့်ခွဲသူများစာရင်း",
+        "bn": "প্রশাসক তালিকা",
+        "ar": "قائمة المسؤولين",
+        "vi": "Danh sách quản trị viên"
+    },
+    "help_proxy_status": {
+        "zh-CN": "代理状态管理",
+        "en-US": "Proxy status",
+        "ru": "Статус прокси",
+        "my": "Proxy အခြေအနေ",
+        "bn": "প্রক্সি স্থিতি",
+        "ar": "حالة البروكسي",
+        "vi": "Trạng thái proxy"
+    },
+    "help_test_proxy": {
+        "zh-CN": "测试代理",
+        "en-US": "Test proxies",
+        "ru": "Тест прокси",
+        "my": "Proxy စမ်းသပ်ရန်",
+        "bn": "প্রক্সি পরীক্ষা",
+        "ar": "اختبار البروكسي",
+        "vi": "Kiểm tra proxy"
+    },
+    "help_clean_proxy": {
+        "zh-CN": "清理失效代理",
+        "en-US": "Clean invalid proxies",
+        "ru": "Очистить неработающие прокси",
+        "my": "မမှန်ကန်သော proxy များကို ရှင်းလင်းရန်",
+        "bn": "অবৈধ প্রক্সি পরিষ্কার করুন",
+        "ar": "تنظيف البروكسيات غير الصالحة",
+        "vi": "Dọn proxy không hợp lệ"
+    },
+    "help_fast_mode": {
+        "zh-CN": "快速模式",
+        "en-US": "Fast mode",
+        "ru": "Быстрый режим",
+        "my": "အမြန်မုဒ်",
+        "bn": "দ্রুত মোড",
+        "ar": "الوضع السريع",
+        "vi": "Chế độ nhanh"
+    },
+    "help_concurrent_checks": {
+        "zh-CN": "并发检测",
+        "en-US": "Concurrent checks",
+        "ru": "Параллельные проверки",
+        "my": "တစ်ပြိုင်နက် စစ်ဆေးမှုများ",
+        "bn": "সমান্তরাল পরীক্ষা",
+        "ar": "الفحوصات المتزامنة",
+        "vi": "Kiểm tra đồng thời"
+    },
+    "help_smart_retry": {
+        "zh-CN": "智能重试",
+        "en-US": "Smart retry",
+        "ru": "Умная повторная попытка",
+        "my": "အသိဉာဏ်ရှိသော ပြန်လုပ်ခြင်း",
+        "bn": "স্মার্ট পুনঃচেষ্টা",
+        "ar": "إعادة محاولة ذكية",
+        "vi": "Thử lại thông minh"
     },
     # Proxy panel messages
     "proxy_panel_admin_only": {
@@ -1099,6 +1334,69 @@ TEXTS = {
         "bn": "❌ ফরম্যাট রূপান্তর বৈশিষ্ট্য উপলব্ধ নয়\n\nকারণ: opentele লাইব্রেরি ইনস্টল করা নেই\n💡 অনুগ্রহ করে ইনস্টল করুন: pip install opentele",
         "ar": "❌ ميزة تحويل التنسيق غير متاحة\n\nالسبب: مكتبة opentele غير مثبتة\n💡 يرجى التثبيت: pip install opentele",
         "vi": "❌ Tính năng chuyển đổi định dạng không khả dụng\n\nLý do: Thư viện opentele chưa được cài đặt\n💡 Vui lòng cài đặt: pip install opentele"
+    },
+    "convert_supported_conversions": {
+        "zh-CN": "支持的转换",
+        "en-US": "Supported Conversions",
+        "ru": "Поддерживаемые преобразования",
+        "my": "ပံ့ပိုးထားသော ပြောင်းလဲမှုများ",
+        "bn": "সমর্থিত রূপান্তর",
+        "ar": "التحويلات المدعومة",
+        "vi": "Chuyển đổi được hỗ trợ"
+    },
+    "convert_tdata_to_session_desc": {
+        "zh-CN": "将Telegram Desktop的tdata格式转换为Session格式",
+        "en-US": "Convert Telegram Desktop tdata format to Session format",
+        "ru": "Преобразование формата tdata Telegram Desktop в формат Session",
+        "my": "Telegram Desktop ၏ tdata ဖော်မတ်ကို Session ဖော်မတ်သို့ ပြောင်းပါ",
+        "bn": "Telegram Desktop এর tdata ফরম্যাটকে Session ফরম্যাটে রূপান্তর করুন",
+        "ar": "تحويل تنسيق tdata من Telegram Desktop إلى تنسيق Session",
+        "vi": "Chuyển đổi định dạng tdata của Telegram Desktop sang định dạng Session"
+    },
+    "convert_session_to_tdata_desc": {
+        "zh-CN": "将Session格式转换为Telegram Desktop的tdata格式",
+        "en-US": "Convert Session format to Telegram Desktop tdata format",
+        "ru": "Преобразование формата Session в формат tdata Telegram Desktop",
+        "my": "Session ဖော်မတ်ကို Telegram Desktop ၏ tdata ဖော်မတ်သို့ ပြောင်းပါ",
+        "bn": "Session ফরম্যাটকে Telegram Desktop এর tdata ফরম্যাটে রূপান্তর করুন",
+        "ar": "تحويل تنسيق Session إلى تنسيق tdata من Telegram Desktop",
+        "vi": "Chuyển đổi định dạng Session sang định dạng tdata của Telegram Desktop"
+    },
+    "convert_features_title": {
+        "zh-CN": "功能特点",
+        "en-US": "Features",
+        "ru": "Особенности",
+        "my": "အင်္ဂါရပ်များ",
+        "bn": "বৈশিষ্ট্য",
+        "ar": "الميزات",
+        "vi": "Tính năng"
+    },
+    "convert_batch_concurrent": {
+        "zh-CN": "批量并发转换，提高效率",
+        "en-US": "Batch concurrent conversion for efficiency",
+        "ru": "Пакетное параллельное преобразование для эффективности",
+        "my": "စွမ်းဆောင်ရည်မြှင့်တင်ရန် အစုစုပေါင်းပြောင်းလဲမှု",
+        "bn": "দক্ষতার জন্য ব্যাচ সমান্তরাল রূপান্তর",
+        "ar": "تحويل دفعة متزامن للكفاءة",
+        "vi": "Chuyển đổi đồng thời hàng loạt để nâng cao hiệu quả"
+    },
+    "convert_realtime_progress": {
+        "zh-CN": "实时进度显示",
+        "en-US": "Real-time progress display",
+        "ru": "Отображение прогресса в реальном времени",
+        "my": "အချိန်နှင့်တပြေးညီ တိုးတက်မှု ပြသခြင်း",
+        "bn": "রিয়েল-টাইম অগ্রগতি প্রদর্শন",
+        "ar": "عرض التقدم في الوقت الفعلي",
+        "vi": "Hiển thị tiến trình theo thời gian thực"
+    },
+    "convert_instructions": {
+        "zh-CN": "操作说明",
+        "en-US": "Instructions",
+        "ru": "Инструкции",
+        "my": "လမ်းညွှန်ချက်များ",
+        "bn": "নির্দেশাবলী",
+        "ar": "التعليمات",
+        "vi": "Hướng dẫn"
     },
     # Error messages
     "error_generic": {
@@ -1575,17 +1873,17 @@ def get_welcome_title(lang_code: str) -> str:
     return LANGS.get(lang, LANGS[DEFAULT_LANG])["welcome_title"]
 
 
-def get_text(lang: str, *keys, default: str = "", **kwargs) -> str:
+def get_text(lang_code: str, *keys, default: str = "", **kwargs) -> str:
     """
     Get translated text with hierarchical key support and fallback.
     
     Supports multiple calling patterns:
-    1. get_text(lang, "key_name")  - Direct TEXTS lookup
-    2. get_text(lang, "status", "title")  - Hierarchical LANGS lookup
-    3. get_text(lang, "status.title")  - Dot-notation path
+    1. get_text(lang_code, "key_name")  - Direct TEXTS lookup
+    2. get_text(lang_code, "status", "title")  - Hierarchical LANGS lookup
+    3. get_text(lang_code, "status.title")  - Dot-notation path
     
     Args:
-        lang: Language code (e.g., "zh-CN", "en-US", "ru")
+        lang_code: Language code (e.g., "zh-CN", "en-US", "ru")
         *keys: One or more keys to navigate the translation dictionaries
         default: Default text if translation not found
         **kwargs: Format parameters for string formatting
@@ -1598,7 +1896,7 @@ def get_text(lang: str, *keys, default: str = "", **kwargs) -> str:
         get_text("ru", "status", "title")
         get_text("zh-CN", "proxy", "enabled", count=5)
     """
-    lang = normalize_lang(lang)
+    lang_code = normalize_lang(lang_code)
     
     if not keys:
         return default
@@ -1613,15 +1911,15 @@ def get_text(lang: str, *keys, default: str = "", **kwargs) -> str:
         if key in TEXTS:
             text_dict = TEXTS[key]
             if isinstance(text_dict, dict):
-                text = text_dict.get(lang) or text_dict.get(DEFAULT_LANG) or default
+                text = text_dict.get(lang_code) or text_dict.get(DEFAULT_LANG) or default
             else:
                 text = str(text_dict) if text_dict else default
         else:
             # Try LANGS as fallback
-            text = _get_from_langs(lang, keys, default)
+            text = _get_from_langs(lang_code, keys, default)
     else:
         # Multiple keys - navigate LANGS hierarchy
-        text = _get_from_langs(lang, keys, default)
+        text = _get_from_langs(lang_code, keys, default)
     
     # Apply formatting if kwargs provided
     if kwargs and text:
@@ -1633,11 +1931,11 @@ def get_text(lang: str, *keys, default: str = "", **kwargs) -> str:
     return text or default
 
 
-def _get_from_langs(lang: str, keys: tuple, default: str = "") -> str:
+def _get_from_langs(lang_code: str, keys: tuple, default: str = "") -> str:
     """Helper function to navigate LANGS hierarchy"""
     try:
         # Try user's language first
-        data = LANGS[lang]
+        data = LANGS[lang_code]
         for key in keys:
             if isinstance(data, dict):
                 data = data[key]
