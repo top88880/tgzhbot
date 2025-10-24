@@ -39,6 +39,7 @@ from i18n import (
     normalize_lang,
     get_lang_label,
     get_welcome_title,
+    get_text,
     DEFAULT_LANG,
 )
 print("🔍 Telegram账号检测机器人 V8.0")
@@ -6108,10 +6109,11 @@ class EnhancedBot:
     def show_proxy_panel(self, update: Update, query):
         """显示代理管理面板"""
         user_id = query.from_user.id
+        user_lang = self.db.get_user_lang(user_id)
         
         # 权限检查（仅管理员可访问）
         if not self.db.is_admin(user_id):
-            query.answer("❌ 仅管理员可以访问代理管理面板")
+            query.answer(get_text(user_lang, 'proxy', 'admin_only'))
             return
         
         query.answer()
@@ -6123,59 +6125,64 @@ class EnhancedBot:
         # 统计住宅代理数量
         residential_count = sum(1 for p in self.proxy_manager.proxies if p.get('is_residential', False))
         
+        # Get localized status texts
+        config_status = get_text(user_lang, 'proxy', 'use_proxy_true') if config.USE_PROXY else get_text(user_lang, 'proxy', 'use_proxy_false')
+        proxy_switch_status = get_text(user_lang, 'proxy', 'enabled') if proxy_enabled_db else get_text(user_lang, 'proxy', 'disabled')
+        actual_mode = get_text(user_lang, 'proxy', 'proxy_mode') if proxy_mode_active else get_text(user_lang, 'proxy', 'local_mode')
+        
         # 构建代理管理面板信息
         proxy_text = f"""
-<b>📡 代理管理面板</b>
+<b>{get_text(user_lang, 'proxy', 'title')}</b>
 
-<b>📊 当前状态</b>
-• 系统配置: {'🟢USE_PROXY=true' if config.USE_PROXY else '🔴USE_PROXY=false'}
-• 代理开关: {'🟢已启用' if proxy_enabled_db else '🔴已禁用'}
-• 代理文件: {config.PROXY_FILE}
-• 可用代理: {len(self.proxy_manager.proxies)}个
-• 住宅代理: {residential_count}个
-• 普通超时: {config.PROXY_TIMEOUT}秒
-• 住宅超时: {config.RESIDENTIAL_PROXY_TIMEOUT}秒
-• 实际模式: {'🟢代理模式' if proxy_mode_active else '🔴本地模式'}
+<b>{get_text(user_lang, 'proxy', 'current_status')}</b>
+{get_text(user_lang, 'proxy', 'system_config').format(config=config_status)}
+{get_text(user_lang, 'proxy', 'proxy_switch').format(status=proxy_switch_status)}
+{get_text(user_lang, 'proxy', 'proxy_file').format(file=config.PROXY_FILE)}
+{get_text(user_lang, 'proxy', 'available_proxies').format(count=len(self.proxy_manager.proxies))}
+{get_text(user_lang, 'proxy', 'residential_proxies').format(count=residential_count)}
+{get_text(user_lang, 'proxy', 'normal_timeout').format(timeout=config.PROXY_TIMEOUT)}
+{get_text(user_lang, 'proxy', 'residential_timeout').format(timeout=config.RESIDENTIAL_PROXY_TIMEOUT)}
+{get_text(user_lang, 'proxy', 'actual_mode').format(mode=actual_mode)}
 
-<b>📝 代理格式支持</b>
-• HTTP: ip:port
-• HTTP认证: ip:port:username:password  
-• SOCKS5: socks5:ip:port:username:password
-• SOCKS4: socks4:ip:port
-• ABCProxy住宅代理: host.abcproxy.vip:port:username:password
+<b>{get_text(user_lang, 'proxy', 'format_support')}</b>
+{get_text(user_lang, 'proxy', 'http_format')}
+{get_text(user_lang, 'proxy', 'http_auth_format')}
+{get_text(user_lang, 'proxy', 'socks5_format')}
+{get_text(user_lang, 'proxy', 'socks4_format')}
+{get_text(user_lang, 'proxy', 'abc_format')}
 
-<b>🛠️ 操作说明</b>
-• 启用/禁用：控制代理开关状态
-• 重新加载：从文件重新读取代理列表
-• 测试代理：检测代理连接性能
-• 查看状态：显示详细代理信息
-• 代理统计：查看使用数据统计
+<b>{get_text(user_lang, 'proxy', 'operation_guide')}</b>
+{get_text(user_lang, 'proxy', 'enable_disable')}
+{get_text(user_lang, 'proxy', 'reload')}
+{get_text(user_lang, 'proxy', 'test')}
+{get_text(user_lang, 'proxy', 'view_status')}
+{get_text(user_lang, 'proxy', 'statistics')}
         """
         
-        # 创建操作按钮
+        # 创建操作按钮 - use localized labels
         buttons = []
         
         # 代理开关控制按钮
         if proxy_enabled_db:
-            buttons.append([InlineKeyboardButton("🔴 禁用代理", callback_data="proxy_disable")])
+            buttons.append([InlineKeyboardButton(get_text(user_lang, 'proxy', 'btn_disable'), callback_data="proxy_disable")])
         else:
-            buttons.append([InlineKeyboardButton("🟢 启用代理", callback_data="proxy_enable")])
+            buttons.append([InlineKeyboardButton(get_text(user_lang, 'proxy', 'btn_enable'), callback_data="proxy_enable")])
         
         # 代理管理操作按钮
         buttons.extend([
             [
-                InlineKeyboardButton("🔄 重新加载代理", callback_data="proxy_reload"),
-                InlineKeyboardButton("📊 代理状态", callback_data="proxy_status")
+                InlineKeyboardButton(get_text(user_lang, 'proxy', 'btn_reload'), callback_data="proxy_reload"),
+                InlineKeyboardButton(get_text(user_lang, 'proxy', 'btn_status'), callback_data="proxy_status")
             ],
             [
-                InlineKeyboardButton("🧪 测试代理", callback_data="proxy_test"),
+                InlineKeyboardButton(get_text(user_lang, 'proxy', 'btn_test'), callback_data="proxy_test"),
                 InlineKeyboardButton("📈 代理统计", callback_data="proxy_stats")
             ],
             [
-                InlineKeyboardButton("🧹 清理失效代理", callback_data="proxy_cleanup"),
+                InlineKeyboardButton(get_text(user_lang, 'proxy', 'btn_clean'), callback_data="proxy_cleanup"),
                 InlineKeyboardButton("⚡ 速度优化", callback_data="proxy_optimize")
             ],
-            [InlineKeyboardButton("🔙 返回管理面板", callback_data="admin_panel")]
+            [InlineKeyboardButton(get_menu_labels(user_lang)["back_main"], callback_data="back_to_main")]
         ])
         
         keyboard = InlineKeyboardMarkup(buttons)
@@ -6489,18 +6496,21 @@ class EnhancedBot:
     
     def handle_help_callback(self, query):
         query.answer()
-        help_text = """
-<b>📖 详细说明</b>
+        user_id = query.from_user.id
+        user_lang = self.db.get_user_lang(user_id)
+        
+        help_text = f"""
+<b>{get_text(user_lang, 'help', 'title')}</b>
 
-<b>🚀 增强功能</b>
-• 代理连接模式自动检测
-• 状态|数量分离实时显示
-• 检测完成后自动发送分类文件
+<b>{get_text(user_lang, 'help', 'enhanced_features')}</b>
+{get_text(user_lang, 'help', 'proxy_mode_detect')}
+{get_text(user_lang, 'help', 'status_display')}
+{get_text(user_lang, 'help', 'auto_send_files')}
 
-<b>📡 代理优势</b>
-• 提高检测成功率
-• 避免IP限制
-• 自动故障转移
+<b>{get_text(user_lang, 'help', 'proxy_advantages')}</b>
+{get_text(user_lang, 'help', 'improve_success')}
+{get_text(user_lang, 'help', 'avoid_ip_limit')}
+{get_text(user_lang, 'help', 'auto_failover')}
         """
         
         self.safe_edit_message(query, help_text, 'HTML')
@@ -6508,14 +6518,17 @@ class EnhancedBot:
     def handle_status_callback(self, query):
         query.answer()
         user_id = query.from_user.id
+        user_lang = self.db.get_user_lang(user_id)
+        
+        current_time = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
         
         status_text = f"""
-<b>⚙️ 系统状态</b>
+<b>{get_text(user_lang, 'status', 'title')}</b>
 
-<b>🤖 机器人信息</b>
-• 版本: 8.0 (完整版)
-• 状态: ✅正常运行
-• 当前时间: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
+<b>{get_text(user_lang, 'status', 'bot_info')}</b>
+{get_text(user_lang, 'status', 'version')}
+{get_text(user_lang, 'status', 'status_running')}
+{get_text(user_lang, 'status', 'current_time').format(time=current_time)}
 
 """
         
@@ -6524,9 +6537,10 @@ class EnhancedBot:
     def handle_admin_panel(self, query):
         """管理员面板"""
         user_id = query.from_user.id
+        user_lang = self.db.get_user_lang(user_id)
         
         if not self.db.is_admin(user_id):
-            query.answer("❌ 仅管理员可访问")
+            query.answer(get_text(user_lang, 'common', 'admin_only'))
             return
         
         # 获取统计信息
