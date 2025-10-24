@@ -4940,17 +4940,20 @@ class EnhancedBot:
         self.updater = Updater(config.TOKEN, use_context=True)
         self.dp = self.updater.dispatcher
         
+        # Register error handler
+        self.dp.add_error_handler(self.error_handler)
+        
         self.setup_handlers()
         
         print("✅ 增强版机器人初始化完成")
     
-    def t(self, user_id: int, text_dict: dict, default: str = "", **kwargs) -> str:
+    def t(self, uid: int, *keys, default: str = "", **kwargs) -> str:
         """
-        Translate text based on user's language preference.
+        Translate text based on user's language preference using hierarchical keys.
         
         Args:
-            user_id: User ID to get language preference
-            text_dict: Dictionary with translations for each language
+            uid: User ID to get language preference (renamed from user_id to avoid kwargs collision)
+            *keys: Hierarchical keys to navigate translation dictionaries
             default: Default text if translation not found
             **kwargs: Format parameters for string formatting
         
@@ -4958,26 +4961,32 @@ class EnhancedBot:
             Translated and formatted string
         
         Usage:
-            text = self.t(user_id, TEXTS["welcome_message"], name="John")
-            text = self.t(user_id, {"zh-CN": "你好", "en-US": "Hello"})
+            text = self.t(uid, "welcome_message", name="John")
+            text = self.t(uid, "common", "admin")
+            text = self.t(uid, "status", "title")
+            text = self.t(uid, "proxy", "use_proxy_true")
         """
-        user_lang = self.db.get_user_lang(user_id)
-        user_lang = normalize_lang(user_lang)
+        user_lang = self.db.get_user_lang(uid)
+        return get_text(user_lang, *keys, default=default, **kwargs)
+    
+    def t_by_lang(self, lang: str, *keys, default: str = "", **kwargs) -> str:
+        """
+        Translate text for a specific language using hierarchical keys.
         
-        # Get text for user's language, fallback to default language
-        if isinstance(text_dict, dict):
-            text = text_dict.get(user_lang) or text_dict.get(DEFAULT_LANG) or default
-        else:
-            text = str(text_dict) if text_dict else default
+        Args:
+            lang: Language code (e.g., "zh-CN", "en-US", "ru")
+            *keys: Hierarchical keys to navigate translation dictionaries
+            default: Default text if translation not found
+            **kwargs: Format parameters for string formatting
         
-        # Apply formatting if kwargs provided
-        if kwargs and text:
-            try:
-                return text.format(**kwargs)
-            except (KeyError, ValueError) as e:
-                print(f"⚠️ Text formatting error: {e}")
-                return text
-        return text or default
+        Returns:
+            Translated and formatted string
+        
+        Usage:
+            text = self.t_by_lang("ru", "common", "admin")
+            text = self.t_by_lang("en-US", "status", "title")
+        """
+        return get_text(lang, *keys, default=default, **kwargs)
     
     def t_by_lang(self, lang: str, text_dict: dict, default: str = "", **kwargs) -> str:
         """
@@ -5233,24 +5242,24 @@ class EnhancedBot:
         welcome_title = get_welcome_title(user_lang)
         
         if self.db.is_admin(user_id):
-            member_status = self.t(user_id, TEXTS["admin_status"])
+            member_status = self.t(user_id, "common", "admin")
         elif is_member:
             member_status = f"🎁 {level}"
         else:
-            member_status = self.t(user_id, TEXTS["no_membership"])
+            member_status = self.t(user_id, "common", "no_membership")
         
-        # Build welcome text using i18n
-        user_info_title = self.t(user_id, TEXTS["user_info_title"])
-        nickname_text = self.t(user_id, TEXTS["nickname"], name=first_name)
-        user_id_text = self.t(user_id, TEXTS["user_id"], user_id=user_id)
-        membership_text = self.t(user_id, TEXTS["membership"], status=member_status)
-        expiry_text = self.t(user_id, TEXTS["expiry"], expiry=expiry)
+        # Build welcome text using i18n with hierarchical keys
+        user_info_title = self.t(user_id, "user_info_title")
+        nickname_text = self.t(user_id, "nickname", name=first_name)
+        user_id_text = self.t(user_id, "user_id", user_id=user_id)
+        membership_text = self.t(user_id, "membership", status=member_status)
+        expiry_text = self.t(user_id, "expiry", expiry=expiry)
         
-        proxy_status_title = self.t(user_id, TEXTS["proxy_status_title"])
-        proxy_mode_value = self.t(user_id, TEXTS["enabled"]) if self.proxy_manager.is_proxy_mode_active(self.db) else self.t(user_id, TEXTS["local_connection"])
-        proxy_mode_text = self.t(user_id, TEXTS["proxy_mode"], mode=proxy_mode_value)
-        proxy_count_text = self.t(user_id, TEXTS["proxy_count"], count=len(self.proxy_manager.proxies))
-        current_time_text = self.t(user_id, TEXTS["current_time"], time=datetime.now().strftime('%Y-%m-%d %H:%M:%S'))
+        proxy_status_title = self.t(user_id, "proxy_status_title")
+        proxy_mode_value = self.t(user_id, "common", "enabled") if self.proxy_manager.is_proxy_mode_active(self.db) else self.t(user_id, "common", "local_connection")
+        proxy_mode_text = self.t(user_id, "proxy_mode", mode=proxy_mode_value)
+        proxy_count_text = self.t(user_id, "proxy_count", count=len(self.proxy_manager.proxies))
+        current_time_text = self.t(user_id, "current_time", time=datetime.now().strftime('%Y-%m-%d %H:%M:%S'))
         
         welcome_text = f"""
 <b>{welcome_title}</b>
@@ -5331,17 +5340,17 @@ class EnhancedBot:
         # 权限检查
         is_member, level, _ = self.db.check_membership(user_id)
         if not is_member and not self.db.is_admin(user_id):
-            self.safe_send_message(update, self.t(user_id, TEXTS["need_membership"]))
+            self.safe_send_message(update, self.t(user_id, "need_membership"))
             return
 
         if not 'FLASK_AVAILABLE' in globals() or not FLASK_AVAILABLE:
-            self.safe_send_message(update, self.t(user_id, TEXTS["api_feature_unavailable"]))
+            self.safe_send_message(update, self.t(user_id, "api_feature_unavailable"))
             return
 
-        text = self.t(user_id, TEXTS["api_function_details"])
+        text = self.t(user_id, "api_function_details")
 
         buttons = [
-            [InlineKeyboardButton(self.t(user_id, TEXTS["back_to_main_menu"]), callback_data="back_to_main")]
+            [InlineKeyboardButton(self.t(user_id, "back_to_main_menu"), callback_data="back_to_main")]
         ]
 
         keyboard = InlineKeyboardMarkup(buttons)
@@ -5363,14 +5372,14 @@ class EnhancedBot:
         # 权限检查
         is_member, level, _ = self.db.check_membership(user_id)
         if not is_member and not self.db.is_admin(user_id):
-            self.safe_edit_message(query, self.t(user_id, TEXTS["need_membership"]))
+            self.safe_edit_message(query, self.t(user_id, "need_membership"))
             return
 
         if not 'FLASK_AVAILABLE' in globals() or not FLASK_AVAILABLE:
-            self.safe_edit_message(query, self.t(user_id, TEXTS["api_feature_unavailable"]))
+            self.safe_edit_message(query, self.t(user_id, "api_feature_unavailable"))
             return
 
-        text = self.t(user_id, TEXTS["api_function_details"])
+        text = self.t(user_id, "api_function_details")
 
         self.safe_edit_message(query, text, 'HTML')
 
@@ -5386,7 +5395,7 @@ class EnhancedBot:
         user_id = update.effective_user.id if update.effective_user else 0
         
         help_text = f"""
-{self.t(user_id, TEXTS["help_text"])}
+{self.t(user_id, "help_text")}
 
 <b>🚀 {self.t(user_id, {"zh-CN": "主要功能", "en-US": "Main Features", "ru": "Основные функции", "my": "အဓိကအင်္ဂါရပ်များ", "bn": "প্রধান বৈশিষ্ট্য", "ar": "الميزات الرئيسية", "vi": "Tính năng chính"})}</b>
 • {self.t(user_id, {"zh-CN": "代理连接模式自动检测账号状态", "en-US": "Proxy connection mode auto-detects account status", "ru": "Режим прокси-соединения автоматически определяет статус аккаунта", "my": "Proxy ချိတ်ဆက်မှုမုဒ်သည် အကောင့်အခြေအနေကို အလိုအလျောက် စစ်ဆေးသည်", "bn": "প্রক্সি সংযোগ মোড স্বয়ংক্রিয়ভাবে অ্যাকাউন্ট স্থিতি সনাক্ত করে", "ar": "وضع اتصال البروكسي يكتشف حالة الحساب تلقائيًا", "vi": "Chế độ kết nối proxy tự động phát hiện trạng thái tài khoản"})}
@@ -5451,11 +5460,11 @@ class EnhancedBot:
         user_id = update.effective_user.id
         
         if not self.db.is_admin(user_id):
-            self.safe_send_message(update, self.t(user_id, TEXTS["admin_only_access"]))
+            self.safe_send_message(update, self.t(user_id, "admin_only_access"))
             return
         
         if not context.args:
-            self.safe_send_message(update, self.t(user_id, TEXTS["addadmin_usage"]))
+            self.safe_send_message(update, self.t(user_id, "addadmin_usage"))
             return
         
         target = context.args[0].strip()
@@ -5470,79 +5479,79 @@ class EnhancedBot:
             target = target.replace("@", "")
             user_info = self.db.get_user_by_username(target)
             if not user_info:
-                self.safe_send_message(update, self.t(user_id, TEXTS["admin_user_not_found"], username=target))
+                self.safe_send_message(update, self.t(user_id, "admin_user_not_found", username=target))
                 return
             
             target_user_id, target_username, target_first_name = user_info
         
         # 检查是否已经是管理员
         if self.db.is_admin(target_user_id):
-            self.safe_send_message(update, self.t(user_id, TEXTS["admin_already_admin"], user_id=target_user_id))
+            self.safe_send_message(update, self.t(user_id, "admin_already_admin", user_id=target_user_id))
             return
         
         # 添加管理员
         if self.db.add_admin(target_user_id, target_username, target_first_name, user_id):
-            self.safe_send_message(update, self.t(user_id, TEXTS["admin_add_details"],
+            self.safe_send_message(update, self.t(user_id, "admin_add_details",
                 user_id=target_user_id,
                 username=target_username,
                 first_name=target_first_name,
                 time=datetime.now().strftime('%Y-%m-%d %H:%M:%S')
             ))
         else:
-            self.safe_send_message(update, self.t(user_id, TEXTS["error_add_admin_failed"]))
+            self.safe_send_message(update, self.t(user_id, "error_add_admin_failed"))
     
     def remove_admin_command(self, update: Update, context: CallbackContext):
         """移除管理员命令"""
         user_id = update.effective_user.id
         
         if not self.db.is_admin(user_id):
-            self.safe_send_message(update, self.t(user_id, TEXTS["admin_only_access"]))
+            self.safe_send_message(update, self.t(user_id, "admin_only_access"))
             return
         
         if not context.args:
-            self.safe_send_message(update, self.t(user_id, TEXTS["removeadmin_usage"]))
+            self.safe_send_message(update, self.t(user_id, "removeadmin_usage"))
             return
         
         try:
             target_user_id = int(context.args[0])
         except ValueError:
-            self.safe_send_message(update, self.t(user_id, TEXTS["error_invalid_user_id"]))
+            self.safe_send_message(update, self.t(user_id, "error_invalid_user_id"))
             return
         
         # 不能移除配置文件中的管理员
         if target_user_id in config.ADMIN_IDS:
-            self.safe_send_message(update, self.t(user_id, TEXTS["admin_cannot_remove_config"]))
+            self.safe_send_message(update, self.t(user_id, "admin_cannot_remove_config"))
             return
         
         # 不能移除自己
         if target_user_id == user_id:
-            self.safe_send_message(update, self.t(user_id, TEXTS["admin_cannot_remove_self"]))
+            self.safe_send_message(update, self.t(user_id, "admin_cannot_remove_self"))
             return
         
         if not self.db.is_admin(target_user_id):
-            self.safe_send_message(update, self.t(user_id, TEXTS["admin_not_admin"], user_id=target_user_id))
+            self.safe_send_message(update, self.t(user_id, "admin_not_admin", user_id=target_user_id))
             return
         
         if self.db.remove_admin(target_user_id):
-            self.safe_send_message(update, self.t(user_id, TEXTS["admin_remove_success"], user_id=target_user_id))
+            self.safe_send_message(update, self.t(user_id, "admin_remove_success", user_id=target_user_id))
         else:
-            self.safe_send_message(update, self.t(user_id, TEXTS["error_remove_admin_failed"]))
+            self.safe_send_message(update, self.t(user_id, "error_remove_admin_failed"))
     
     def list_admins_command(self, update: Update, context: CallbackContext):
         """查看管理员列表命令"""
         user_id = update.effective_user.id
         
         if not self.db.is_admin(user_id):
-            self.safe_send_message(update, self.t(user_id, TEXTS["admin_only_access"]))
+            self.safe_send_message(update, self.t(user_id, "admin_only_access"))
             return
         
         admins = self.db.get_all_admins()
         
         if not admins:
-            self.safe_send_message(update, self.t(user_id, TEXTS["admin_list_empty"]))
+            self.safe_send_message(update, self.t(user_id, "admin_list_empty"))
             return
         
-        admin_text = self.t(user_id, TEXTS["admin_list_title"])
+        admin_text = self.t(user_id, "admin_list_title")
         
         for i, (admin_id, username, first_name, added_time) in enumerate(admins, 1):
             admin_text += f"<b>{i}.</b> "
@@ -5559,7 +5568,7 @@ class EnhancedBot:
                 admin_text += f"   ⏰ {added_time}\n"
             admin_text += "\n"
         
-        admin_text += self.t(user_id, TEXTS["admin_list_total"], count=len(admins))
+        admin_text += self.t(user_id, "admin_list_total", count=len(admins))
         
         self.safe_send_message(update, admin_text, 'HTML')
     
@@ -5568,7 +5577,7 @@ class EnhancedBot:
         user_id = update.effective_user.id
         
         if not self.db.is_admin(user_id):
-            self.safe_send_message(update, self.t(user_id, TEXTS["admin_only_access"]))
+            self.safe_send_message(update, self.t(user_id, "admin_only_access"))
             return
         
         # 获取当前代理状态
@@ -5626,7 +5635,7 @@ class EnhancedBot:
         if context.args:
             if context.args[0] == "reload":
                 self.proxy_manager.load_proxies()
-                self.safe_send_message(update, self.t(user_id, TEXTS["proxy_reload_count"], count=len(self.proxy_manager.proxies)))
+                self.safe_send_message(update, self.t(user_id, "proxy_reload_count", count=len(self.proxy_manager.proxies)))
                 return
             elif context.args[0] == "status":
                 self.show_proxy_detailed_status(update)
@@ -5654,18 +5663,18 @@ class EnhancedBot:
             
             self.safe_send_message(update, status_text, 'HTML')
         else:
-            self.safe_send_message(update, self.t(user_id, TEXTS["proxy_no_available"]))
+            self.safe_send_message(update, self.t(user_id, "proxy_no_available"))
     
     def test_proxy_command(self, update: Update, context: CallbackContext):
         """测试代理命令"""
         user_id = update.effective_user.id
         
         if not self.db.is_admin(user_id):
-            self.safe_send_message(update, self.t(user_id, TEXTS["admin_only_access"]))
+            self.safe_send_message(update, self.t(user_id, "admin_only_access"))
             return
         
         if not self.proxy_manager.proxies:
-            self.safe_send_message(update, self.t(user_id, TEXTS["proxy_no_test"]))
+            self.safe_send_message(update, self.t(user_id, "proxy_no_test"))
             return
         
         # 异步处理代理测试
@@ -5756,11 +5765,11 @@ class EnhancedBot:
         user_id = update.effective_user.id
         
         if not self.db.is_admin(user_id):
-            self.safe_send_message(update, self.t(user_id, TEXTS["admin_only_access"]))
+            self.safe_send_message(update, self.t(user_id, "admin_only_access"))
             return
         
         if not self.proxy_manager.proxies:
-            self.safe_send_message(update, self.t(user_id, TEXTS["proxy_no_cleanup"]))
+            self.safe_send_message(update, self.t(user_id, "proxy_no_cleanup"))
             return
         
         # 检查是否有确认参数
@@ -5889,7 +5898,7 @@ class EnhancedBot:
         # 检查权限
         is_member, level, _ = self.db.check_membership(user_id)
         if not is_member and not self.db.is_admin(user_id):
-            self.safe_send_message(update, self.t(user_id, TEXTS["need_membership"]))
+            self.safe_send_message(update, self.t(user_id, "need_membership"))
             return
         
         if not OPENTELE_AVAILABLE:
@@ -5905,8 +5914,8 @@ class EnhancedBot:
             self.safe_send_message(update, error_msg)
             return
         
-        title = self.t(user_id, TEXTS["convert_menu_title"])
-        select_prompt = self.t(user_id, TEXTS["convert_select_direction"])
+        title = self.t(user_id, "convert_menu_title")
+        select_prompt = self.t(user_id, "convert_select_direction")
         
         text = f"""
 {title}
@@ -5926,8 +5935,8 @@ class EnhancedBot:
 {select_prompt}
         """
         
-        tdata_to_session_text = self.t(user_id, TEXTS["convert_tdata_to_session"])
-        session_to_tdata_text = self.t(user_id, TEXTS["convert_session_to_tdata"])
+        tdata_to_session_text = self.t(user_id, "convert_tdata_to_session")
+        session_to_tdata_text = self.t(user_id, "convert_session_to_tdata")
         back_text = get_menu_labels(self.db.get_user_lang(user_id))["back_main"]
         
         buttons = [
@@ -5944,13 +5953,13 @@ class EnhancedBot:
         user_id = query.from_user.id
         
         if not self.db.is_admin(user_id):
-            query.answer(self.t(user_id, TEXTS["proxy_panel_admin_only"]))
+            query.answer(self.t(user_id, "proxy_panel_admin_only"))
             return
         
         if data == "proxy_enable":
             # 启用代理
             if self.db.set_proxy_enabled(True, user_id):
-                query.answer(self.t(user_id, TEXTS["proxy_enabled_success"]))
+                query.answer(self.t(user_id, "proxy_enabled_success"))
                 self.refresh_proxy_panel(query)
             else:
                 query.answer(self.t(user_id, TEXTS.get("proxy_enable_failed", TEXTS["language_change_failed"])))
@@ -5958,7 +5967,7 @@ class EnhancedBot:
         elif data == "proxy_disable":
             # 禁用代理
             if self.db.set_proxy_enabled(False, user_id):
-                query.answer(self.t(user_id, TEXTS["proxy_disabled_success"]))
+                query.answer(self.t(user_id, "proxy_disabled_success"))
                 self.refresh_proxy_panel(query)
             else:
                 query.answer(self.t(user_id, TEXTS.get("proxy_disable_failed", TEXTS["language_change_failed"])))
@@ -5969,7 +5978,7 @@ class EnhancedBot:
             self.proxy_manager.load_proxies()
             new_count = len(self.proxy_manager.proxies)
             
-            query.answer(self.t(user_id, TEXTS["proxy_reload_success"], count=new_count))
+            query.answer(self.t(user_id, "proxy_reload_success", count=new_count))
             self.refresh_proxy_panel(query)
         
         elif data == "proxy_status":
@@ -6171,7 +6180,7 @@ class EnhancedBot:
         
         # 权限检查（仅管理员可访问）
         if not self.db.is_admin(user_id):
-            query.answer(self.t(user_id, TEXTS["proxy_panel_admin_only"]))
+            query.answer(self.t(user_id, "proxy_panel_admin_only"))
             return
         
         query.answer()
@@ -6362,7 +6371,7 @@ class EnhancedBot:
         # 检查权限
         is_member, level, _ = self.db.check_membership(user_id)
         if not is_member and not self.db.is_admin(user_id):
-            self.safe_edit_message(query, self.t(user_id, TEXTS["need_membership"]))
+            self.safe_edit_message(query, self.t(user_id, "need_membership"))
             return
         
         if not TELETHON_AVAILABLE:
@@ -6399,11 +6408,11 @@ class EnhancedBot:
         # 检查权限
         is_member, level, _ = self.db.check_membership(user_id)
         if not is_member and not self.db.is_admin(user_id):
-            self.safe_edit_message(query, self.t(user_id, TEXTS["need_membership"]))
+            self.safe_edit_message(query, self.t(user_id, "need_membership"))
             return
         
         if not OPENTELE_AVAILABLE:
-            self.safe_edit_message(query, self.t(user_id, TEXTS["convert_feature_unavailable"]))
+            self.safe_edit_message(query, self.t(user_id, "convert_feature_unavailable"))
             return
         
         text = """
@@ -6507,7 +6516,7 @@ class EnhancedBot:
         # 检查权限
         is_member, level, _ = self.db.check_membership(user_id)
         if not is_member and not self.db.is_admin(user_id):
-            self.safe_edit_message(query, self.t(user_id, TEXTS["need_membership"]))
+            self.safe_edit_message(query, self.t(user_id, "need_membership"))
             return
         
         if not TELETHON_AVAILABLE:
@@ -7099,7 +7108,7 @@ class EnhancedBot:
 
         is_member, _, _ = self.db.check_membership(user_id)
         if not is_member and not self.db.is_admin(user_id):
-            self.safe_send_message(update, self.t(user_id, TEXTS["need_membership"]))
+            self.safe_send_message(update, self.t(user_id, "need_membership"))
             return
 
         if document.file_size > 100 * 1024 * 1024:
@@ -8598,7 +8607,7 @@ class EnhancedBot:
         # 权限检查
         is_member, _, _ = self.db.check_membership(user_id)
         if not is_member and not self.db.is_admin(user_id):
-            self.safe_send_message(update, self.t(user_id, TEXTS["need_membership"]))
+            self.safe_send_message(update, self.t(user_id, "need_membership"))
             return
         
         if not CLASSIFY_AVAILABLE or not self.classifier:
@@ -8618,9 +8627,9 @@ class EnhancedBot:
         is_member, _, _ = self.db.check_membership(user_id)
         if not is_member and not self.db.is_admin(user_id):
             if query:
-                self.safe_edit_message(query, self.t(user_id, TEXTS["need_membership"]))
+                self.safe_edit_message(query, self.t(user_id, "need_membership"))
             else:
-                self.safe_send_message(update, self.t(user_id, TEXTS["need_membership"]))
+                self.safe_send_message(update, self.t(user_id, "need_membership"))
             return
         
         if not CLASSIFY_AVAILABLE or not self.classifier:
@@ -11473,9 +11482,9 @@ class EnhancedBot:
         current_lang = self.db.get_user_lang(user_id)
         current_label = get_lang_label(current_lang)
         
-        title = self.t(user_id, TEXTS["language_selection_title"])
-        current_text = self.t(user_id, TEXTS["current_language"], lang=current_label)
-        prompt = self.t(user_id, TEXTS["select_language_prompt"])
+        title = self.t(user_id, "language_selection_title")
+        current_text = self.t(user_id, "current_language", lang=current_label)
+        prompt = self.t(user_id, "select_language_prompt")
         
         text = f"""
 {title}
@@ -11496,7 +11505,7 @@ class EnhancedBot:
             buttons.append([InlineKeyboardButton(button_text, callback_data=f"set_lang_{lang_code}")])
         
         # 添加返回按钮
-        back_text = self.t(user_id, TEXTS["back_button"])
+        back_text = self.t(user_id, "back_button")
         buttons.append([InlineKeyboardButton(back_text, callback_data="back_to_main")])
         
         keyboard = InlineKeyboardMarkup(buttons)
@@ -11521,14 +11530,31 @@ class EnhancedBot:
         # 设置用户语言
         if self.db.set_user_lang(user_id, lang_code):
             lang_label = get_lang_label(lang_code)
-            success_msg = self.t_by_lang(lang_code, TEXTS["language_changed"], lang=lang_label)
+            success_msg = self.t_by_lang(lang_code, "language_changed", lang=lang_label)
             query.answer(success_msg, show_alert=False)
             
             # 刷新主菜单显示新语言
             self.show_main_menu(update, user_id)
         else:
-            fail_msg = self.t(user_id, TEXTS["language_change_failed"])
+            fail_msg = self.t(user_id, "language_change_failed")
             query.answer(fail_msg, show_alert=True)
+    
+    def error_handler(self, update: Update, context: CallbackContext):
+        """Handle errors in the dispatcher"""
+        try:
+            # Log the error with details
+            print(f"\n{'='*50}")
+            print(f"❌ Error Handler Triggered")
+            print(f"{'='*50}")
+            if update:
+                print(f"Update: {update}")
+            if context.error:
+                print(f"Error: {context.error}")
+                import traceback
+                traceback.print_exc()
+            print(f"{'='*50}\n")
+        except Exception as e:
+            print(f"❌ Error in error_handler itself: {e}")
     
     def run(self):
         print("🚀 启动增强版机器人（速度优化版）...")

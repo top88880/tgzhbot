@@ -87,7 +87,11 @@ LANGS = {
             "next": "➡️ 下一步",
             "complete": "✅ 完成",
             "error": "❌ 错误",
-            "admin_only": "❌ 仅管理员可访问"
+            "admin_only": "❌ 仅管理员可访问",
+            "admin": "👑 管理员",
+            "no_membership": "❌ 无会员",
+            "enabled": "🟢启用",
+            "local_connection": "🔴本地连接"
         }
     },
     "ru": {
@@ -175,7 +179,11 @@ LANGS = {
             "next": "➡️ Далее",
             "complete": "✅ Завершено",
             "error": "❌ Ошибка",
-            "admin_only": "❌ Только для администраторов"
+            "admin_only": "❌ Только для администраторов",
+            "admin": "👑 Администратор",
+            "no_membership": "❌ Нет подписки",
+            "enabled": "🟢включено",
+            "local_connection": "🔴Локальное соединение"
         }
     },
     "en-US": {
@@ -263,7 +271,11 @@ LANGS = {
             "next": "➡️ Next",
             "complete": "✅ Complete",
             "error": "❌ Error",
-            "admin_only": "❌ Admin only"
+            "admin_only": "❌ Admin only",
+            "admin": "👑 Administrator",
+            "no_membership": "❌ No Membership",
+            "enabled": "🟢Enabled",
+            "local_connection": "🔴Local Connection"
         }
     }
 }
@@ -289,10 +301,25 @@ LANGS["my"] = {
         "back_main": "🔙 ပင်မမီနူးသို့ပြန်သွားရန်"
     },
     "welcome_title": "🔍 Telegram အကောင့် Bot V8.0",
-    "help": LANGS["zh-CN"]["help"].copy(),
-    "status": LANGS["zh-CN"]["status"].copy(),
-    "proxy": LANGS["zh-CN"]["proxy"].copy(),
-    "common": LANGS["zh-CN"]["common"].copy()
+    "help": LANGS["zh-CN"]["help"],
+    "status": LANGS["zh-CN"]["status"],
+    "proxy": LANGS["zh-CN"]["proxy"],
+    "common": {
+        "success": "✅ အောင်မြင်",
+        "failed": "❌ မအောင်မြင်",
+        "processing": "🔄 လုပ်ဆောင်နေသည်...",
+        "cancel": "❌ ပယ်ဖျက်",
+        "confirm": "✅ အတည်ပြု",
+        "back": "🔙 ပြန်သွားရန်",
+        "next": "➡️ နောက်တစ်ဆင့်",
+        "complete": "✅ ပြီးစီး",
+        "error": "❌ အမှားအယွင်း",
+        "admin_only": "❌ စီမံခန့်ခွဲသူများသာ",
+        "admin": "👑 စီမံခန့်ခွဲသူ",
+        "no_membership": "❌ အဖွဲ့ဝင်မဟုတ်ပါ",
+        "enabled": "🟢ဖွင့်ထားသည်",
+        "local_connection": "🔴ဒေသခံချိတ်ဆက်မှု"
+    }
 }
 
 LANGS["bn"] = {
@@ -315,10 +342,25 @@ LANGS["bn"] = {
         "back_main": "🔙 মূল মেনুতে ফিরে যান"
     },
     "welcome_title": "🔍 Telegram অ্যাকাউন্ট Bot V8.0",
-    "help": LANGS["zh-CN"]["help"].copy(),
-    "status": LANGS["zh-CN"]["status"].copy(),
-    "proxy": LANGS["zh-CN"]["proxy"].copy(),
-    "common": LANGS["zh-CN"]["common"].copy()
+    "help": LANGS["zh-CN"]["help"],
+    "status": LANGS["zh-CN"]["status"],
+    "proxy": LANGS["zh-CN"]["proxy"],
+    "common": {
+        "success": "✅ সফল",
+        "failed": "❌ ব্যর্থ",
+        "processing": "🔄 প্রক্রিয়াকরণ...",
+        "cancel": "❌ বাতিল",
+        "confirm": "✅ নিশ্চিত করুন",
+        "back": "🔙 ফিরে যান",
+        "next": "➡️ পরবর্তী",
+        "complete": "✅ সম্পন্ন",
+        "error": "❌ ত্রুটি",
+        "admin_only": "❌ শুধুমাত্র প্রশাসক",
+        "admin": "👑 প্রশাসক",
+        "no_membership": "❌ কোন সদস্যপদ নেই",
+        "enabled": "🟢সক্রিয়",
+        "local_connection": "🔴স্থানীয় সংযোগ"
+    }
 }
 
 LANGS["ar"] = {
@@ -341,10 +383,25 @@ LANGS["ar"] = {
         "back_main": "🔙 العودة إلى القائمة"
     },
     "welcome_title": "🔍 بوت حساب Telegram V8.0",
-    "help": LANGS["zh-CN"]["help"].copy(),
-    "status": LANGS["zh-CN"]["status"].copy(),
-    "proxy": LANGS["zh-CN"]["proxy"].copy(),
-    "common": LANGS["zh-CN"]["common"].copy()
+    "help": LANGS["zh-CN"]["help"],
+    "status": LANGS["zh-CN"]["status"],
+    "proxy": LANGS["zh-CN"]["proxy"],
+    "common": {
+        "success": "✅ نجح",
+        "failed": "❌ فشل",
+        "processing": "🔄 المعالجة...",
+        "cancel": "❌ إلغاء",
+        "confirm": "✅ تأكيد",
+        "back": "🔙 رجوع",
+        "next": "➡️ التالي",
+        "complete": "✅ مكتمل",
+        "error": "❌ خطأ",
+        "admin_only": "❌ للمسؤولين فقط",
+        "admin": "👑 المسؤول",
+        "no_membership": "❌ لا عضوية",
+        "enabled": "🟢مفعل",
+        "local_connection": "🔴اتصال محلي"
+    }
 }
 
 LANGS["vi"] = {
@@ -367,10 +424,25 @@ LANGS["vi"] = {
         "back_main": "🔙 Quay lại menu chính"
     },
     "welcome_title": "🔍 Bot tài khoản Telegram V8.0",
-    "help": LANGS["zh-CN"]["help"].copy(),
-    "status": LANGS["zh-CN"]["status"].copy(),
-    "proxy": LANGS["zh-CN"]["proxy"].copy(),
-    "common": LANGS["zh-CN"]["common"].copy()
+    "help": LANGS["zh-CN"]["help"],
+    "status": LANGS["zh-CN"]["status"],
+    "proxy": LANGS["zh-CN"]["proxy"],
+    "common": {
+        "success": "✅ Thành công",
+        "failed": "❌ Thất bại",
+        "processing": "🔄 Đang xử lý...",
+        "cancel": "❌ Hủy",
+        "confirm": "✅ Xác nhận",
+        "back": "🔙 Quay lại",
+        "next": "➡️ Tiếp theo",
+        "complete": "✅ Hoàn tất",
+        "error": "❌ Lỗi",
+        "admin_only": "❌ Chỉ quản trị viên",
+        "admin": "👑 Quản trị viên",
+        "no_membership": "❌ Không có thành viên",
+        "enabled": "🟢Đã bật",
+        "local_connection": "🔴Kết nối cục bộ"
+    }
 }
 
 # Comprehensive text keys for all UI surfaces
@@ -493,6 +565,15 @@ TEXTS = {
         "bn": "❌ কোন সদস্যপদ নেই",
         "ar": "❌ لا عضوية",
         "vi": "❌ Không có thành viên"
+    },
+    "welcome_message": {
+        "zh-CN": "欢迎使用机器人",
+        "en-US": "Welcome to the bot",
+        "ru": "Добро пожаловать в бот",
+        "my": "Bot သို့ကြိုဆိုပါသည်",
+        "bn": "বটে স্বাগতম",
+        "ar": "مرحبا بك في البوت",
+        "vi": "Chào mừng đến với bot"
     },
     # Membership and access messages
     "need_membership": {
@@ -1546,7 +1627,7 @@ def get_text(lang: str, *keys, default: str = "", **kwargs) -> str:
     if kwargs and text:
         try:
             return text.format(**kwargs)
-        except (KeyError, ValueError) as e:
+        except (KeyError, ValueError):
             # If formatting fails, return unformatted text
             return text
     return text or default
