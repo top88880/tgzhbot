@@ -40,7 +40,9 @@ from i18n import (
     get_lang_label,
     get_welcome_title,
     get_text,
+    get_text_by_key,
     DEFAULT_LANG,
+    TEXTS,
 )
 print("🔍 Telegram账号检测机器人 V8.0")
 print(f"📅 当前时间: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
@@ -4942,6 +4944,71 @@ class EnhancedBot:
         
         print("✅ 增强版机器人初始化完成")
     
+    def t(self, user_id: int, text_dict: dict, default: str = "", **kwargs) -> str:
+        """
+        Translate text based on user's language preference.
+        
+        Args:
+            user_id: User ID to get language preference
+            text_dict: Dictionary with translations for each language
+            default: Default text if translation not found
+            **kwargs: Format parameters for string formatting
+        
+        Returns:
+            Translated and formatted string
+        
+        Usage:
+            text = self.t(user_id, TEXTS["welcome_message"], name="John")
+            text = self.t(user_id, {"zh-CN": "你好", "en-US": "Hello"})
+        """
+        user_lang = self.db.get_user_lang(user_id)
+        user_lang = normalize_lang(user_lang)
+        
+        # Get text for user's language, fallback to default language
+        if isinstance(text_dict, dict):
+            text = text_dict.get(user_lang) or text_dict.get(DEFAULT_LANG) or default
+        else:
+            text = str(text_dict) if text_dict else default
+        
+        # Apply formatting if kwargs provided
+        if kwargs and text:
+            try:
+                return text.format(**kwargs)
+            except (KeyError, ValueError) as e:
+                print(f"⚠️ Text formatting error: {e}")
+                return text
+        return text or default
+    
+    def t_by_lang(self, lang: str, text_dict: dict, default: str = "", **kwargs) -> str:
+        """
+        Translate text for a specific language (when user_id is not available).
+        
+        Args:
+            lang: Language code
+            text_dict: Dictionary with translations for each language
+            default: Default text if translation not found
+            **kwargs: Format parameters for string formatting
+        
+        Returns:
+            Translated and formatted string
+        """
+        lang = normalize_lang(lang)
+        
+        # Get text for specified language, fallback to default language
+        if isinstance(text_dict, dict):
+            text = text_dict.get(lang) or text_dict.get(DEFAULT_LANG) or default
+        else:
+            text = str(text_dict) if text_dict else default
+        
+        # Apply formatting if kwargs provided
+        if kwargs and text:
+            try:
+                return text.format(**kwargs)
+            except (KeyError, ValueError) as e:
+                print(f"⚠️ Text formatting error: {e}")
+                return text
+        return text or default
+    
     def setup_handlers(self):
         self.dp.add_handler(CommandHandler("start", self.start_command))
         self.dp.add_handler(CommandHandler("help", self.help_command))
@@ -5137,25 +5204,38 @@ class EnhancedBot:
         welcome_title = get_welcome_title(user_lang)
         
         if self.db.is_admin(user_id):
-            member_status = "👑 管理员"
+            member_status = self.t(user_id, TEXTS["admin_status"])
         elif is_member:
             member_status = f"🎁 {level}"
         else:
-            member_status = "❌ 无会员"
+            member_status = self.t(user_id, TEXTS["no_membership"])
+        
+        # Build welcome text using i18n
+        user_info_title = self.t(user_id, TEXTS["user_info_title"])
+        nickname_text = self.t(user_id, TEXTS["nickname"], name=first_name)
+        user_id_text = self.t(user_id, TEXTS["user_id"], user_id=user_id)
+        membership_text = self.t(user_id, TEXTS["membership"], status=member_status)
+        expiry_text = self.t(user_id, TEXTS["expiry"], expiry=expiry)
+        
+        proxy_status_title = self.t(user_id, TEXTS["proxy_status_title"])
+        proxy_mode_value = self.t(user_id, TEXTS["enabled"]) if self.proxy_manager.is_proxy_mode_active(self.db) else self.t(user_id, TEXTS["local_connection"])
+        proxy_mode_text = self.t(user_id, TEXTS["proxy_mode"], mode=proxy_mode_value)
+        proxy_count_text = self.t(user_id, TEXTS["proxy_count"], count=len(self.proxy_manager.proxies))
+        current_time_text = self.t(user_id, TEXTS["current_time"], time=datetime.now().strftime('%Y-%m-%d %H:%M:%S'))
         
         welcome_text = f"""
 <b>{welcome_title}</b>
 
-👤 <b>用户信息</b>
-• 昵称: {first_name}
-• ID: <code>{user_id}</code>
-• 会员: {member_status}
-• 到期: {expiry}
+{user_info_title}
+{nickname_text}
+{user_id_text}
+{membership_text}
+{expiry_text}
 
-📡 <b>代理状态</b>
-• 代理模式: {'🟢启用' if self.proxy_manager.is_proxy_mode_active(self.db) else '🔴本地连接'}
-• 代理数量: {len(self.proxy_manager.proxies)}个
-• 当前时间: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
+{proxy_status_title}
+{proxy_mode_text}
+{proxy_count_text}
+{current_time_text}
         """
         
 
