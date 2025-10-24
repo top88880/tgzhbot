@@ -1111,6 +1111,204 @@ TEXTS = {
         "ar": "❌ فشل في الحصول على بروكسي الاختبار",
         "vi": "❌ Không thể lấy proxy thử nghiệm"
     },
+    # API function detailed description
+    "api_function_details": {
+        "zh-CN": """🔗 <b>API格式转换功能</b>
+
+<b>📱 功能说明</b>
+• 将TData/Session转换为API格式
+• 生成专属验证码接收链接
+• 自动提取手机号和2FA密码
+• 实时转发短信验证码
+
+<b>📋 输出格式</b>
+• JSON格式（开发者友好）
+• CSV格式（Excel可打开）
+• TXT格式（便于查看）
+
+<b>🌐 验证码接收</b>
+• 每个账号生成独立网页链接
+• 自动刷新显示最新验证码
+• 5分钟自动过期保护
+
+<b>📤 操作说明</b>
+请上传包含TData或Session文件的ZIP压缩包...""",
+        "en-US": """🔗 <b>API Format Conversion</b>
+
+<b>📱 Feature Description</b>
+• Convert TData/Session to API format
+• Generate dedicated verification code link
+• Auto-extract phone number and 2FA password
+• Real-time SMS verification forwarding
+
+<b>📋 Output Format</b>
+• JSON format (developer-friendly)
+• CSV format (Excel compatible)
+• TXT format (easy to view)
+
+<b>🌐 Verification Code Reception</b>
+• Independent web link for each account
+• Auto-refresh to show latest code
+• 5-minute auto-expiration protection
+
+<b>📤 Instructions</b>
+Please upload ZIP file containing TData or Session files...""",
+        "ru": """🔗 <b>API-конвертация</b>
+
+<b>📱 Описание функции</b>
+• Преобразование TData/Session в формат API
+• Генерация специальной ссылки для получения кода
+• Автоматическое извлечение номера телефона и 2FA пароля
+• Пересылка SMS кодов в реальном времени
+
+<b>📋 Формат вывода</b>
+• Формат JSON (удобен для разработчиков)
+• Формат CSV (совместим с Excel)
+• Формат TXT (легко просматривать)
+
+<b>🌐 Прием кода верификации</b>
+• Независимая веб-ссылка для каждого аккаунта
+• Автообновление для отображения последнего кода
+• Защита с автоматическим истечением через 5 минут
+
+<b>📤 Инструкции</b>
+Пожалуйста, загрузите ZIP-файл, содержащий файлы TData или Session...""",
+        "my": """🔗 <b>API ဖော်မတ်ပြောင်းခြင်း</b>
+
+<b>📱 လုပ်ဆောင်ချက် ဖော်ပြချက်</b>
+• TData/Session ကို API ဖော်မတ်သို့ ပြောင်းခြင်း
+• အထူး အတည်ပြုကုဒ် လင့်ခ် ဖန်တီးခြင်း
+• ဖုန်းနံပါတ်နှင့် 2FA စကားဝှက်ကို အလိုအလျောက် ထုတ်ယူခြင်း
+• SMS အတည်ပြုကုဒ်များကို အချိန်နှင့်တပြေးညီ ပေးပို့ခြင်း
+
+<b>📋 ထွက်ရှိမည့်ဖော်မတ်</b>
+• JSON ဖော်မတ် (developer-friendly)
+• CSV ဖော်မတ် (Excel compatible)
+• TXT ဖော်မတ် (လွယ်ကူစွာကြည့်ရှုနိုင်)
+
+<b>🌐 အတည်ပြုကုဒ် လက်ခံခြင်း</b>
+• အကောင့်တစ်ခုစီအတွက် သီးခြား web link
+• နောက်ဆုံးကုဒ်ကို ပြသရန် အလိုအလျောက် refresh
+• 5 မိနစ် အလိုအလျောက် သက်တမ်းကုန်ဆုံးခြင်း ကာကွယ်မှု
+
+<b>📤 ညွှန်ကြားချက်များ</b>
+TData သို့မဟုတ် Session ဖိုင်များပါရှိသော ZIP ဖိုင်ကို တင်ပါ...""",
+        "bn": """🔗 <b>API ফরম্যাট রূপান্তর</b>
+
+<b>📱 বৈশিষ্ট্যের বিবরণ</b>
+• TData/Session কে API ফরম্যাটে রূপান্তর করুন
+• ডেডিকেটেড ভেরিফিকেশন কোড লিংক তৈরি করুন
+• ফোন নম্বর এবং 2FA পাসওয়ার্ড স্বয়ংক্রিয়ভাবে এক্সট্র্যাক্ট করুন
+• রিয়েল-টাইম SMS ভেরিফিকেশন ফরওয়ার্ডিং
+
+<b>📋 আউটপুট ফরম্যাট</b>
+• JSON ফরম্যাট (ডেভেলপার-বান্ধব)
+• CSV ফরম্যাট (Excel সামঞ্জস্যপূর্ণ)
+• TXT ফরম্যাট (দেখতে সহজ)
+
+<b>🌐 ভেরিফিকেশন কোড রিসেপশন</b>
+• প্রতিটি অ্যাকাউন্টের জন্য স্বতন্ত্র ওয়েব লিংক
+• সর্বশেষ কোড দেখাতে অটো-রিফ্রেশ
+• 5-মিনিট অটো-মেয়াদ শেষ সুরক্ষা
+
+<b>📤 নির্দেশাবলী</b>
+TData বা Session ফাইল সমন্বিত ZIP ফাইল আপলোড করুন...""",
+        "ar": """🔗 <b>تحويل تنسيق API</b>
+
+<b>📱 وصف الميزة</b>
+• تحويل TData/Session إلى تنسيق API
+• إنشاء رابط رمز التحقق المخصص
+• استخراج رقم الهاتف وكلمة مرور 2FA تلقائيًا
+• إعادة توجيه رمز التحقق عبر الرسائل القصيرة في الوقت الفعلي
+
+<b>📋 تنسيق الإخراج</b>
+• تنسيق JSON (سهل للمطورين)
+• تنسيق CSV (متوافق مع Excel)
+• تنسيق TXT (سهل العرض)
+
+<b>🌐 استقبال رمز التحقق</b>
+• رابط ويب مستقل لكل حساب
+• التحديث التلقائي لإظهار أحدث رمز
+• حماية انتهاء صلاحية تلقائية لمدة 5 دقائق
+
+<b>📤 التعليمات</b>
+يرجى تحميل ملف ZIP يحتوي على ملفات TData أو Session...""",
+        "vi": """🔗 <b>Chuyển đổi định dạng API</b>
+
+<b>📱 Mô tả tính năng</b>
+• Chuyển đổi TData/Session sang định dạng API
+• Tạo liên kết mã xác minh chuyên dụng
+• Tự động trích xuất số điện thoại và mật khẩu 2FA
+• Chuyển tiếp mã xác minh SMS theo thời gian thực
+
+<b>📋 Định dạng đầu ra</b>
+• Định dạng JSON (thân thiện với nhà phát triển)
+• Định dạng CSV (tương thích Excel)
+• Định dạng TXT (dễ xem)
+
+<b>🌐 Nhận mã xác minh</b>
+• Liên kết web độc lập cho mỗi tài khoản
+• Tự động làm mới để hiển thị mã mới nhất
+• Bảo vệ hết hạn tự động sau 5 phút
+
+<b>📤 Hướng dẫn</b>
+Vui lòng tải lên tệp ZIP chứa các tệp TData hoặc Session..."""
+    },
+    "back_to_main_menu": {
+        "zh-CN": "🔙 返回主菜单",
+        "en-US": "🔙 Back to Main Menu",
+        "ru": "🔙 Назад в главное меню",
+        "my": "🔙 ပင်မမီနူးသို့ ပြန်သွားရန်",
+        "bn": "🔙 প্রধান মেনুতে ফিরে যান",
+        "ar": "🔙 العودة إلى القائمة الرئيسية",
+        "vi": "🔙 Quay lại menu chính"
+    },
+    # Admin command usage messages
+    "addadmin_usage": {
+        "zh-CN": "📝 使用方法:\n/addadmin [用户ID或@用户名]\n\n示例:\n/addadmin 123456789\n/addadmin @username",
+        "en-US": "📝 Usage:\n/addadmin [UserID or @username]\n\nExample:\n/addadmin 123456789\n/addadmin @username",
+        "ru": "📝 Использование:\n/addadmin [ID пользователя или @имя]\n\nПример:\n/addadmin 123456789\n/addadmin @username",
+        "my": "📝 အသုံးပြုနည်း:\n/addadmin [UserID သို့မဟုတ် @အမည်]\n\nဥပမာ:\n/addadmin 123456789\n/addadmin @username",
+        "bn": "📝 ব্যবহার:\n/addadmin [UserID বা @username]\n\nউদাহরণ:\n/addadmin 123456789\n/addadmin @username",
+        "ar": "📝 الاستخدام:\n/addadmin [معرف المستخدم أو @اسم المستخدم]\n\nمثال:\n/addadmin 123456789\n/addadmin @username",
+        "vi": "📝 Cách sử dụng:\n/addadmin [UserID hoặc @username]\n\nVí dụ:\n/addadmin 123456789\n/addadmin @username"
+    },
+    "removeadmin_usage": {
+        "zh-CN": "📝 使用方法:\n/removeadmin [用户ID]\n\n示例:\n/removeadmin 123456789",
+        "en-US": "📝 Usage:\n/removeadmin [UserID]\n\nExample:\n/removeadmin 123456789",
+        "ru": "📝 Использование:\n/removeadmin [ID пользователя]\n\nПример:\n/removeadmin 123456789",
+        "my": "📝 အသုံးပြုနည်း:\n/removeadmin [UserID]\n\nဥပမာ:\n/removeadmin 123456789",
+        "bn": "📝 ব্যবহার:\n/removeadmin [UserID]\n\nউদাহরণ:\n/removeadmin 123456789",
+        "ar": "📝 الاستخدام:\n/removeadmin [معرف المستخدم]\n\nمثال:\n/removeadmin 123456789",
+        "vi": "📝 Cách sử dụng:\n/removeadmin [UserID]\n\nVí dụ:\n/removeadmin 123456789"
+    },
+    "admin_add_details": {
+        "zh-CN": "✅ 成功添加管理员\n\n👤 用户ID: {user_id}\n📝 用户名: @{username}\n🏷️ 昵称: {first_name}\n⏰ 添加时间: {time}",
+        "en-US": "✅ Successfully added admin\n\n👤 User ID: {user_id}\n📝 Username: @{username}\n🏷️ Nickname: {first_name}\n⏰ Added: {time}",
+        "ru": "✅ Администратор успешно добавлен\n\n👤 ID пользователя: {user_id}\n📝 Имя: @{username}\n🏷️ Никнейм: {first_name}\n⏰ Добавлен: {time}",
+        "my": "✅ စီမံခန့်ခွဲသူ အောင်မြင်စွာ ထည့်သွင်းပြီးပါပြီ\n\n👤 အသုံးပြုသူ ID: {user_id}\n📝 အမည်: @{username}\n🏷️ ဆိုင်းဘုတ်: {first_name}\n⏰ ထည့်သွင်းသည့်အချိန်: {time}",
+        "bn": "✅ সফলভাবে প্রশাসক যোগ করা হয়েছে\n\n👤 ব্যবহারকারী ID: {user_id}\n📝 ব্যবহারকারীর নাম: @{username}\n🏷️ ডাকনাম: {first_name}\n⏰ যোগ করা হয়েছে: {time}",
+        "ar": "✅ تمت إضافة المسؤول بنجاح\n\n👤 معرف المستخدم: {user_id}\n📝 اسم المستخدم: @{username}\n🏷️ اللقب: {first_name}\n⏰ تمت الإضافة: {time}",
+        "vi": "✅ Đã thêm quản trị viên thành công\n\n👤 ID người dùng: {user_id}\n📝 Tên người dùng: @{username}\n🏷️ Biệt danh: {first_name}\n⏰ Đã thêm: {time}"
+    },
+    "admin_list_title": {
+        "zh-CN": "<b>👑 管理员列表</b>\n\n",
+        "en-US": "<b>👑 Admin List</b>\n\n",
+        "ru": "<b>👑 Список администраторов</b>\n\n",
+        "my": "<b>👑 စီမံခန့်ခွဲသူ စာရင်း</b>\n\n",
+        "bn": "<b>👑 প্রশাসক তালিকা</b>\n\n",
+        "ar": "<b>👑 قائمة المسؤولين</b>\n\n",
+        "vi": "<b>👑 Danh sách quản trị viên</b>\n\n"
+    },
+    "admin_list_total": {
+        "zh-CN": "<b>📊 总计: {count} 个管理员</b>",
+        "en-US": "<b>📊 Total: {count} admins</b>",
+        "ru": "<b>📊 Всего: {count} администраторов</b>",
+        "my": "<b>📊 စုစုပေါင်း: {count} စီမံခန့်ခွဲသူ</b>",
+        "bn": "<b>📊 মোট: {count} প্রশাসক</b>",
+        "ar": "<b>📊 المجموع: {count} مسؤول</b>",
+        "vi": "<b>📊 Tổng: {count} quản trị viên</b>"
+    },
 }
 
 DEFAULT_LANG = "zh-CN"
