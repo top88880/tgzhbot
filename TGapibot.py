@@ -4969,12 +4969,12 @@ class EnhancedBot:
         user_lang = self.db.get_user_lang(uid)
         return get_text(user_lang, *keys, default=default, **kwargs)
     
-    def t_by_lang(self, lang: str, *keys, default: str = "", **kwargs) -> str:
+    def t_by_lang(self, lang_code: str, *keys, default: str = "", **kwargs) -> str:
         """
         Translate text for a specific language using hierarchical keys.
         
         Args:
-            lang: Language code (e.g., "zh-CN", "en-US", "ru")
+            lang_code: Language code (e.g., "zh-CN", "en-US", "ru")
             *keys: Hierarchical keys to navigate translation dictionaries
             default: Default text if translation not found
             **kwargs: Format parameters for string formatting
@@ -4986,37 +4986,7 @@ class EnhancedBot:
             text = self.t_by_lang("ru", "common", "admin")
             text = self.t_by_lang("en-US", "status", "title")
         """
-        return get_text(lang, *keys, default=default, **kwargs)
-    
-    def t_by_lang(self, lang: str, text_dict: dict, default: str = "", **kwargs) -> str:
-        """
-        Translate text for a specific language (when user_id is not available).
-        
-        Args:
-            lang: Language code
-            text_dict: Dictionary with translations for each language
-            default: Default text if translation not found
-            **kwargs: Format parameters for string formatting
-        
-        Returns:
-            Translated and formatted string
-        """
-        lang = normalize_lang(lang)
-        
-        # Get text for specified language, fallback to default language
-        if isinstance(text_dict, dict):
-            text = text_dict.get(lang) or text_dict.get(DEFAULT_LANG) or default
-        else:
-            text = str(text_dict) if text_dict else default
-        
-        # Apply formatting if kwargs provided
-        if kwargs and text:
-            try:
-                return text.format(**kwargs)
-            except (KeyError, ValueError) as e:
-                print(f"⚠️ Text formatting error: {e}")
-                return text
-        return text or default
+        return get_text(lang_code, *keys, default=default, **kwargs)
     
     def setup_handlers(self):
         self.dp.add_handler(CommandHandler("start", self.start_command))
@@ -5048,9 +5018,6 @@ class EnhancedBot:
         # 新增：广播媒体上传处理
         self.dp.add_handler(MessageHandler(Filters.photo, self.handle_photo))
         self.dp.add_handler(MessageHandler(Filters.text & ~Filters.command, self.handle_text))
-        
-        # 添加错误处理器
-        self.dp.add_error_handler(self.error_handler)
     
     def error_handler(self, update: Update, context: CallbackContext):
         """处理错误，避免崩溃"""
@@ -5065,15 +5032,7 @@ class EnhancedBot:
             if update and update.effective_user:
                 try:
                     user_id = update.effective_user.id
-                    error_msg = self.t(user_id, {
-                        "zh-CN": "❌ 发生错误，请稍后重试",
-                        "en-US": "❌ An error occurred, please try again later",
-                        "ru": "❌ Произошла ошибка, попробуйте позже",
-                        "my": "❌ အမှားတစ်ခု ဖြစ်ပွားခဲ့သည်၊ နောက်မှ ထပ်စမ်းကြည့်ပါ",
-                        "bn": "❌ একটি ত্রুটি ঘটেছে, পরে আবার চেষ্টা করুন",
-                        "ar": "❌ حدث خطأ، يرجى المحاولة مرة أخرى لاحقًا",
-                        "vi": "❌ Đã xảy ra lỗi, vui lòng thử lại sau"
-                    })
+                    error_msg = self.t(user_id, "error_generic", error=str(e))
                     self.safe_send_message(update, error_msg)
                 except:
                     pass
@@ -11538,23 +11497,6 @@ class EnhancedBot:
         else:
             fail_msg = self.t(user_id, "language_change_failed")
             query.answer(fail_msg, show_alert=True)
-    
-    def error_handler(self, update: Update, context: CallbackContext):
-        """Handle errors in the dispatcher"""
-        try:
-            # Log the error with details
-            print(f"\n{'='*50}")
-            print(f"❌ Error Handler Triggered")
-            print(f"{'='*50}")
-            if update:
-                print(f"Update: {update}")
-            if context.error:
-                print(f"Error: {context.error}")
-                import traceback
-                traceback.print_exc()
-            print(f"{'='*50}\n")
-        except Exception as e:
-            print(f"❌ Error in error_handler itself: {e}")
     
     def run(self):
         print("🚀 启动增强版机器人（速度优化版）...")
