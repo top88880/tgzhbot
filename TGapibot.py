@@ -4940,17 +4940,20 @@ class EnhancedBot:
         self.updater = Updater(config.TOKEN, use_context=True)
         self.dp = self.updater.dispatcher
         
+        # Register error handler
+        self.dp.add_error_handler(self.error_handler)
+        
         self.setup_handlers()
         
         print("✅ 增强版机器人初始化完成")
     
-    def t(self, user_id: int, text_dict: dict, default: str = "", **kwargs) -> str:
+    def t(self, uid: int, *keys, default: str = "", **kwargs) -> str:
         """
-        Translate text based on user's language preference.
+        Translate text based on user's language preference using hierarchical keys.
         
         Args:
-            user_id: User ID to get language preference
-            text_dict: Dictionary with translations for each language
+            uid: User ID to get language preference (renamed from user_id to avoid kwargs collision)
+            *keys: Hierarchical keys to navigate translation dictionaries
             default: Default text if translation not found
             **kwargs: Format parameters for string formatting
         
@@ -4958,26 +4961,32 @@ class EnhancedBot:
             Translated and formatted string
         
         Usage:
-            text = self.t(user_id, TEXTS["welcome_message"], name="John")
-            text = self.t(user_id, {"zh-CN": "你好", "en-US": "Hello"})
+            text = self.t(uid, "welcome_message", name="John")
+            text = self.t(uid, "common", "admin")
+            text = self.t(uid, "status", "title")
+            text = self.t(uid, "proxy", "use_proxy_true")
         """
-        user_lang = self.db.get_user_lang(user_id)
-        user_lang = normalize_lang(user_lang)
+        user_lang = self.db.get_user_lang(uid)
+        return get_text(user_lang, *keys, default=default, **kwargs)
+    
+    def t_by_lang(self, lang: str, *keys, default: str = "", **kwargs) -> str:
+        """
+        Translate text for a specific language using hierarchical keys.
         
-        # Get text for user's language, fallback to default language
-        if isinstance(text_dict, dict):
-            text = text_dict.get(user_lang) or text_dict.get(DEFAULT_LANG) or default
-        else:
-            text = str(text_dict) if text_dict else default
+        Args:
+            lang: Language code (e.g., "zh-CN", "en-US", "ru")
+            *keys: Hierarchical keys to navigate translation dictionaries
+            default: Default text if translation not found
+            **kwargs: Format parameters for string formatting
         
-        # Apply formatting if kwargs provided
-        if kwargs and text:
-            try:
-                return text.format(**kwargs)
-            except (KeyError, ValueError) as e:
-                print(f"⚠️ Text formatting error: {e}")
-                return text
-        return text or default
+        Returns:
+            Translated and formatted string
+        
+        Usage:
+            text = self.t_by_lang("ru", "common", "admin")
+            text = self.t_by_lang("en-US", "status", "title")
+        """
+        return get_text(lang, *keys, default=default, **kwargs)
     
     def t_by_lang(self, lang: str, text_dict: dict, default: str = "", **kwargs) -> str:
         """
@@ -5233,24 +5242,24 @@ class EnhancedBot:
         welcome_title = get_welcome_title(user_lang)
         
         if self.db.is_admin(user_id):
-            member_status = self.t(user_id, TEXTS["admin_status"])
+            member_status = self.t(user_id, "common", "admin")
         elif is_member:
             member_status = f"🎁 {level}"
         else:
-            member_status = self.t(user_id, TEXTS["no_membership"])
+            member_status = self.t(user_id, "common", "no_membership")
         
-        # Build welcome text using i18n
-        user_info_title = self.t(user_id, TEXTS["user_info_title"])
-        nickname_text = self.t(user_id, TEXTS["nickname"], name=first_name)
-        user_id_text = self.t(user_id, TEXTS["user_id"], user_id=user_id)
-        membership_text = self.t(user_id, TEXTS["membership"], status=member_status)
-        expiry_text = self.t(user_id, TEXTS["expiry"], expiry=expiry)
+        # Build welcome text using i18n with hierarchical keys
+        user_info_title = self.t(user_id, "user_info_title")
+        nickname_text = self.t(user_id, "nickname", name=first_name)
+        user_id_text = self.t(user_id, "user_id", user_id=user_id)
+        membership_text = self.t(user_id, "membership", status=member_status)
+        expiry_text = self.t(user_id, "expiry", expiry=expiry)
         
-        proxy_status_title = self.t(user_id, TEXTS["proxy_status_title"])
-        proxy_mode_value = self.t(user_id, TEXTS["enabled"]) if self.proxy_manager.is_proxy_mode_active(self.db) else self.t(user_id, TEXTS["local_connection"])
-        proxy_mode_text = self.t(user_id, TEXTS["proxy_mode"], mode=proxy_mode_value)
-        proxy_count_text = self.t(user_id, TEXTS["proxy_count"], count=len(self.proxy_manager.proxies))
-        current_time_text = self.t(user_id, TEXTS["current_time"], time=datetime.now().strftime('%Y-%m-%d %H:%M:%S'))
+        proxy_status_title = self.t(user_id, "proxy_status_title")
+        proxy_mode_value = self.t(user_id, "common", "enabled") if self.proxy_manager.is_proxy_mode_active(self.db) else self.t(user_id, "common", "local_connection")
+        proxy_mode_text = self.t(user_id, "proxy_mode", mode=proxy_mode_value)
+        proxy_count_text = self.t(user_id, "proxy_count", count=len(self.proxy_manager.proxies))
+        current_time_text = self.t(user_id, "current_time", time=datetime.now().strftime('%Y-%m-%d %H:%M:%S'))
         
         welcome_text = f"""
 <b>{welcome_title}</b>
@@ -6171,7 +6180,7 @@ class EnhancedBot:
         
         # 权限检查（仅管理员可访问）
         if not self.db.is_admin(user_id):
-            query.answer(self.t(user_id, TEXTS["proxy_panel_admin_only"]))
+            query.answer(self.t(user_id, "proxy_panel_admin_only"))
             return
         
         query.answer()
@@ -11529,6 +11538,23 @@ class EnhancedBot:
         else:
             fail_msg = self.t(user_id, TEXTS["language_change_failed"])
             query.answer(fail_msg, show_alert=True)
+    
+    def error_handler(self, update: Update, context: CallbackContext):
+        """Handle errors in the dispatcher"""
+        try:
+            # Log the error with details
+            print(f"\n{'='*50}")
+            print(f"❌ Error Handler Triggered")
+            print(f"{'='*50}")
+            if update:
+                print(f"Update: {update}")
+            if context.error:
+                print(f"Error: {context.error}")
+                import traceback
+                traceback.print_exc()
+            print(f"{'='*50}\n")
+        except Exception as e:
+            print(f"❌ Error in error_handler itself: {e}")
     
     def run(self):
         print("🚀 启动增强版机器人（速度优化版）...")
